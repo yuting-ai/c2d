@@ -2,3 +2,4 @@ data/uploads/
 data/processed/
 data/exports/
 .env
+frontend/node_modules/
