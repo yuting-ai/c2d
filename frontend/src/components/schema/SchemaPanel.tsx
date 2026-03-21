@@ -1,14 +1,14 @@
 import { useRef, useState, useCallback } from 'react'
 import { useSchemaStore, type BlockingIssue, type DatasetState } from '../../stores/schemaStore'
+import { useProjectStore } from '../../stores/projectStore'
 import { useUIStore } from '../../stores/uiStore'
 import '../../styles/schema.css'
-
-const PROJECT_ID = 'default'  // Phase 3: will come from projectStore
 
 export default function SchemaPanel() {
   const { datasets, systemMode, strategyVersion, uploading, confirming, error } = useSchemaStore()
   const allResolved = useSchemaStore((s) => s.allResolved)
   const { uploadDataset, confirmSchema } = useSchemaStore()
+  const activeProjectId = useProjectStore((s) => s.activeProjectId)
   const schemaPanelOpen = useUIStore((s) => s.schemaPanelOpen)
   const toggleSchemaPanel = useUIStore((s) => s.toggleSchemaPanel)
 
@@ -51,7 +51,7 @@ export default function SchemaPanel() {
       {!isCollapsed && (
         <div className="sp-body">
           {!hasDatasets ? (
-            <UploadZone projectId={PROJECT_ID} uploading={uploading} />
+            <UploadZone uploading={uploading} />
           ) : (
             <>
               {datasets.map((ds) => (
@@ -63,9 +63,10 @@ export default function SchemaPanel() {
                 {error && <div className="sp-error">{error}</div>}
                 <button
                   className="sp-confirm-btn"
-                  disabled={!allResolved() || confirming}
+                  disabled={!allResolved() || confirming || !activeProjectId}
                   onClick={async () => {
-                    await confirmSchema(PROJECT_ID)
+                    if (!activeProjectId) return
+                    await confirmSchema(activeProjectId)
                     // Collapse panel after successful confirm
                     if (useSchemaStore.getState().systemMode === 'chat') {
                       useUIStore.getState().setSchemaPanelOpen(false)
@@ -88,14 +89,17 @@ export default function SchemaPanel() {
 
 // ── Upload Zone ──
 
-function UploadZone({ projectId, uploading }: { projectId: string; uploading: boolean }) {
+function UploadZone({ uploading }: { uploading: boolean }) {
   const uploadDataset = useSchemaStore((s) => s.uploadDataset)
+  const createProject = useProjectStore((s) => s.createProject)
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
 
   const handleFile = useCallback((file: File) => {
+    // Create a project named after the file, then upload
+    const projectId = createProject('', file.name)
     uploadDataset(projectId, file)
-  }, [projectId, uploadDataset])
+  }, [createProject, uploadDataset])
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()

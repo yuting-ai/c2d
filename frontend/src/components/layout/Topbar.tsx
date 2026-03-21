@@ -1,7 +1,23 @@
+import { useRef } from 'react'
 import { useUIStore } from '../../stores/uiStore'
+import { useSchemaStore } from '../../stores/schemaStore'
+import { useProjectStore } from '../../stores/projectStore'
 
 export default function Topbar() {
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
+  const datasets = useSchemaStore((s) => s.datasets)
+  const uploadDataset = useSchemaStore((s) => s.uploadDataset)
+  const activeProjectId = useProjectStore((s) => s.activeProjectId)
+  const addDatasetToProject = useProjectStore((s) => s.addDatasetToProject)
+  const setSchemaPanelOpen = useUIStore((s) => s.setSchemaPanelOpen)
+  const addInputRef = useRef<HTMLInputElement>(null)
+
+  const handleAddFile = (file: File) => {
+    if (!activeProjectId) return
+    uploadDataset(activeProjectId, file)
+    addDatasetToProject(activeProjectId, file.name)
+    setSchemaPanelOpen(true)  // open schema panel to show new dataset
+  }
 
   return (
     <div className="topbar">
@@ -11,19 +27,60 @@ export default function Topbar() {
       <div className="logo">ana<em>lyst</em></div>
       <div className="divider" />
 
-      {/* Dataset toggles — placeholder for Phase 2 */}
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <DatasetChip name="sales_2024.csv" rows="12,430" active />
-        <DatasetChip name="products.csv" rows="856" active />
-        <button className="new-analysis-btn" style={{ margin: 0, width: 'auto', padding: '4px 10px', fontSize: '11px', borderRadius: '6px' }}>
-          + add
-        </button>
+      {/* Dataset chips — real data from schemaStore */}
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1, overflow: 'hidden' }}>
+        {datasets.length === 0 && (
+          <span style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>
+            no datasets loaded
+          </span>
+        )}
+        {datasets.map((ds) => (
+          <DatasetChip key={ds.id} name={ds.name} rows={ds.rowCount.toLocaleString()} active />
+        ))}
+
+        {/* + add button — only show when there's an active project */}
+        {activeProjectId && (
+          <>
+            <input
+              ref={addInputRef}
+              type="file"
+              accept=".csv,.tsv,.txt,.xlsx,.xls"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) handleAddFile(file)
+                e.target.value = ''  // reset so same file can be selected again
+              }}
+            />
+            <button
+              onClick={() => addInputRef.current?.click()}
+              style={{
+                fontFamily: 'var(--mono)', fontSize: '11px',
+                padding: '4px 10px', borderRadius: 6,
+                border: '1px dashed var(--border2)', background: 'none',
+                color: 'var(--text3)', cursor: 'pointer',
+                whiteSpace: 'nowrap', flexShrink: 0,
+                transition: 'all 0.15s',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.borderColor = 'var(--green)'
+                e.currentTarget.style.color = 'var(--green)'
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.borderColor = 'var(--border2)'
+                e.currentTarget.style.color = 'var(--text3)'
+              }}
+            >
+              + add
+            </button>
+          </>
+        )}
       </div>
 
       <div className="topbar-right">
         <div className="agent-badge">
           <div className="pulse-dot" />
-          4 agents ready
+          {datasets.length > 0 ? '4 agents ready' : 'waiting for data'}
         </div>
       </div>
     </div>
@@ -39,7 +96,7 @@ function DatasetChip({ name, rows, active }: { name: string; rows: string; activ
       border: `1px solid ${active ? 'var(--green)' : 'var(--border2)'}`,
       background: active ? 'var(--green-dim)' : 'var(--bg3)',
       fontFamily: 'var(--mono)', fontSize: '11px',
-      cursor: 'pointer',
+      flexShrink: 0,
     }}>
       <div style={{
         width: 24, height: 13, borderRadius: 7,

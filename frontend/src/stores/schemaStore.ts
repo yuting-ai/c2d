@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useProjectStore } from './projectStore'
 
 export interface ColumnInfo {
   name: string
@@ -54,6 +55,13 @@ interface ActiveTable {
   row_count: number
 }
 
+interface ProjectSchemaState {
+  datasets: DatasetState[]
+  strategyVersion: number
+  systemMode: 'empty' | 'clean' | 'chat'
+  activeTables: ActiveTable[]
+}
+
 interface SchemaStore {
   datasets: DatasetState[]
   strategyVersion: number
@@ -63,14 +71,26 @@ interface SchemaStore {
   error: string | null
   activeTables: ActiveTable[]
 
+  // Project cache — saves state per project
+  _cache: Record<string, ProjectSchemaState>
+  _activeProjectId: string | null
+
   // Derived
   allResolved: () => boolean
 
   // Actions
+  switchProject: (projectId: string | null) => void
   uploadDataset: (projectId: string, file: File) => Promise<void>
   selectOption: (datasetId: string, column: string, option: string) => void
   confirmSchema: (projectId: string) => Promise<void>
   reset: () => void
+}
+
+const EMPTY_STATE: ProjectSchemaState = {
+  datasets: [],
+  strategyVersion: 0,
+  systemMode: 'empty',
+  activeTables: [],
 }
 
 const API_BASE = '/api'
@@ -83,12 +103,44 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
   confirming: false,
   error: null,
   activeTables: [],
+  _cache: {},
+  _activeProjectId: null,
 
   allResolved: () => {
     const { datasets } = get()
     return datasets.every((ds) =>
       ds.blockingIssues.every((issue) => issue.resolved)
     )
+  },
+
+  switchProject: (projectId) => {
+    const state = get()
+
+    // Save current project state to cache
+    if (state._activeProjectId) {
+      state._cache[state._activeProjectId] = {
+        datasets: state.datasets,
+        strategyVersion: state.strategyVersion,
+        systemMode: state.systemMode,
+        activeTables: state.activeTables,
+      }
+    }
+
+    // Restore target project state (or empty)
+    const cached = projectId ? state._cache[projectId] : null
+    const restored = cached || { ...EMPTY_STATE }
+
+    set({
+      _activeProjectId: projectId,
+      _cache: { ...state._cache },
+      datasets: restored.datasets,
+      strategyVersion: restored.strategyVersion,
+      systemMode: restored.systemMode,
+      activeTables: restored.activeTables,
+      uploading: false,
+      confirming: false,
+      error: null,
+    })
   },
 
   uploadDataset: async (projectId, file) => {
@@ -127,11 +179,14 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         confirmed: false,
       }
 
-      set((s) => ({
-        datasets: [...s.datasets, dataset],
-        systemMode: 'clean',
-        uploading: false,
-      }))
+      set((s) => {
+        const newDatasets = [...s.datasets, dataset]
+        const newState = { datasets: newDatasets, systemMode: 'clean' as const, uploading: false, _activeProjectId: projectId }
+        // Save to cache
+        const cache = { ...s._cache }
+        cache[projectId] = { datasets: newDatasets, strategyVersion: s.strategyVersion, systemMode: 'clean', activeTables: s.activeTables }
+        return { ...newState, _cache: cache }
+      })
     } catch (e: any) {
       set({ uploading: false, error: e.message || 'Network error' })
     }
@@ -165,7 +220,8 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     })
 
     // Fire and forget — decisions are stored on backend
-    fetch(`${API_BASE}/projects/default/datasets/${datasetId}/decisions`, {
+    const projectId = useProjectStore.getState().activeProjectId || 'default'
+    fetch(`${API_BASE}/projects/${projectId}/datasets/${datasetId}/decisions`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ decisions }),
@@ -207,13 +263,27 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       }
 
       const d = json.data
-      set((s) => ({
-        strategyVersion: d.strategy_version,
-        systemMode: 'chat',
-        confirming: false,
-        activeTables: d.active_tables,
-        datasets: s.datasets.map((ds) => ({ ...ds, confirmed: true })),
-      }))
+      set((s) => {
+        const newDatasets = s.datasets.map((ds) => ({ ...ds, confirmed: true }))
+        const newState = {
+          strategyVersion: d.strategy_version,
+          systemMode: 'chat' as const,
+          confirming: false,
+          activeTables: d.active_tables,
+          datasets: newDatasets,
+        }
+        // Save to cache
+        const cache = { ...s._cache }
+        if (s._activeProjectId) {
+          cache[s._activeProjectId] = {
+            datasets: newDatasets,
+            strategyVersion: d.strategy_version,
+            systemMode: 'chat',
+            activeTables: d.active_tables,
+          }
+        }
+        return { ...newState, _cache: cache }
+      })
     } catch (e: any) {
       set({ confirming: false, error: e.message || 'Network error' })
     }
