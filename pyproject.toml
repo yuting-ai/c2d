@@ -1,0 +1,65 @@
+[project]
+name = "c2d"
+version = "0.1.0"
+description = "Chat to Dataset — multi-agent data analysis system"
+requires-python = ">=3.12"
+readme = "README.md"
+
+dependencies = [
+    # ── API Layer ──
+    "fastapi>=0.127",
+    "uvicorn[standard]>=0.40",
+    "sse-starlette>=2.0",
+    "python-multipart>=0.0.21",
+    "python-dotenv>=1.2",
+    "pydantic>=2.12",
+    "pydantic-settings>=2.12",
+
+    # ── Agent Framework ──
+    "langgraph>=1.0",
+    "langchain-core>=1.2",
+    "langchain-openai>=1.1",
+
+    # ── Data Engine ──
+    "duckdb>=1.5",
+    "pandas>=2.3",
+    "numpy>=2.4",
+    "openpyxl>=3.1",
+
+    # ── Statistics ──
+    "scipy>=1.17",
+    "scikit-learn>=1.8",
+
+    # ── Charts ──
+    "plotly>=6.5",
+
+    # ── Vector Database ──
+    "qdrant-client>=1.17",
+
+    # ── Embedding (local) ──
+    "sentence-transformers>=5.3",
+
+    # ── Cloud Adapters ──
+    "sqlalchemy>=2.0",
+    "psycopg2-binary>=2.9",
+    "aiofiles>=25.1",
+
+    # ── Utilities ──
+    "httpx>=0.28",
+    "orjson>=3.11",
+    "tiktoken>=0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0",
+    "pytest-asyncio>=1.3",
+]
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

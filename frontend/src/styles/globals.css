@@ -1,0 +1,54 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg0: #09090b;
+  --bg1: #0d0d10;
+  --bg2: #111318;
+  --bg3: #161820;
+  --border: #1f2128;
+  --border2: #272a33;
+  --text1: #e4e5e8;
+  --text2: #8a8c94;
+  --text3: #4a4d58;
+  --green: #3effa0;
+  --green-dim: #1a3d2c;
+  --green-border: #1f4d35;
+  --amber: #f0a83a;
+  --amber-dim: #2a1f08;
+  --amber-border: #3d2e0a;
+  --purple: #a57ef5;
+  --purple-dim: #1e1535;
+  --purple-border: #2e1f55;
+  --red: #f05a5a;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'DM Sans', sans-serif;
+}
+
+html, body, #root { height: 100%; background: var(--bg0); }
+
+body {
+  font-family: var(--sans);
+  color: var(--text2);
+  overflow: hidden;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+/* ── Pulse animation ── */
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+/* ── Chat flash highlight ── */
+.chat-flash {
+  outline: 1px solid var(--green-border);
+  outline-offset: 3px;
+  border-radius: 10px;
+}

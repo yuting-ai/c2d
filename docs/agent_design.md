@@ -1,0 +1,1048 @@
+
+# c2d — Agent Design
+
+本文档是每个 agent 的实现规格书，覆盖 prompt 结构、工具注册、决策逻辑、输入/输出格式。对应后端 `backend/agents/*.py` 和 `backend/config/prompts.py` 的直接编写依据。
+
+架构总览见 architecture.md Section 5-7。
+
+---
+
+## 1. Pipeline 总览
+
+```
+用户 query
+    │
+    ▼
+┌─────────┐
+│ Planner │ ─→ plan: ["sql", "viz", "stats"] + quality_block 检查
+└────┬────┘
+     │
+     ▼
+┌──────────┐
+│SQL Agent │ ← 必须先跑，产出数据
+└────┬─────┘
+     │ sql_result 就绪
+     │ fan-out（并行）
+     ▼
+┌───────────┐  ┌────────────┐
+│ Viz Agent │  │Stats Agent │
+│           │  │ (条件激活)  │
+└─────┬─────┘  └──────┬─────┘
+      │               │
+      └───────┬───────┘
+              │ reducer 合并
+              ▼
+        ┌───────────┐
+        │  Critic   │ ─→ pass: 继续 / retry: 打回指定 worker
+        └─────┬─────┘
+              │ (最多 retry 2 次)
+              ▼
+        ┌───────────┐
+        │  Report   │ ─→ should_record + 结构化输出
+        └───────────┘
+```
+
+执行分三阶段：
+
+1. **SQL Agent 先行** — 查询数据，产出 `sql_result`（行列数据）
+2. **Viz + Stats 并行** — 两者都读 `sql_result` 但互不依赖，可同时进行
+3. **Critic → Report 串行** — 审核 → 输出
+
+---
+
+## 2. Planner Agent
+
+ **文件** ：`backend/agents/planner.py`
+
+ **角色** ：理解用户意图，拆解子任务，决定激活哪些 worker，执行 WARNING 列交叉检查。
+
+ **工具** ：无（纯推理）
+
+### 2.1 Prompt 结构
+
+```
+[System]
+You are a data analysis planner. Your job is to understand the user's question
+and decide which specialist agents to activate.
+
+Available agents:
+- sql: Generates and executes SQL queries against DuckDB tables
+- viz: Creates charts and visualizations (Plotly)
+- stats: Runs statistical tests, detects outliers, computes significance
+
+Available tables:
+{active_tables}                    ← 从 AgentState.active_tables 注入
+
+Column quality warnings (unresolved):
+{warning_columns}                  ← WARNING 级别且未处理的列
+
+User preferences:
+{preferences}                      ← 从 Memory.preferences 注入
+
+Recent analysis history:
+{short_term_context}               ← 从 Memory.short_term 注入
+
+Relevant past analyses:
+{long_term_recalls}                ← 从 Memory.long_term 语义召回
+
+[User]
+{user_query}
+
+[Instructions]
+Respond with a JSON object:
+{
+  "plan": ["sql", "viz"],           // 要激活的 agent 列表
+  "sql_task": "...",                // SQL Agent 的任务描述
+  "viz_task": "...",                // Viz Agent 的任务描述（如激活）
+  "stats_task": "...",              // Stats Agent 的任务描述（如激活）
+  "involved_columns": ["col1"],     // 本次分析涉及的列名
+  "quality_blocked": false,         // 是否被 WARNING 列阻断
+  "blocked_column": null,           // 阻断列名（如有）
+  "reasoning": "..."                // 决策推理过程（调试用）
+}
+```
+
+### 2.2 决策逻辑
+
+```python
+def plan(state: AgentState) -> AgentState:
+    # 1. 组装 prompt：注入 active_tables、warnings、preferences、memory
+    # 2. LLM 推理，解析 JSON 输出
+    # 3. WARNING 交叉检查
+  
+    involved = planner_output["involved_columns"]
+    warnings = [w for w in state.warning_issues if w.column in involved]
+  
+    if warnings:
+        # 升级为阻断 → 推送 quality_block SSE 事件，暂停 pipeline
+        return state.update(
+            quality_blocked=True,
+            blocked_column=warnings[0].column
+        )
+  
+    # 4. Stats Agent 条件激活
+    #    只有问题涉及统计判断时才激活：
+    #    - 趋势/增长/下降判断
+    #    - 差异/比较/显著性
+    #    - 异常/离群值检测
+    #    简单查询（top N、排序、聚合）不激活 Stats
+  
+    return state.update(
+        plan=planner_output["plan"],
+        sql_task=planner_output["sql_task"],
+        viz_task=planner_output.get("viz_task"),
+        stats_task=planner_output.get("stats_task")
+    )
+```
+
+### 2.3 Stats 激活判断标准
+
+| 用户问题模式          | 激活 Stats？ | 原因                     |
+| --------------------- | ------------ | ------------------------ |
+| "哪个地区增长最快"    | ✅           | 趋势判断需要 r²、p 值   |
+| "A 和 B 有显著差异吗" | ✅           | 差异比较需要 t-test      |
+| "有没有异常值"        | ✅           | 直接问异常检测           |
+| "上月销售额多少"      | ❌           | 简单查询，数字本身是事实 |
+| "Top 5 产品"          | ❌           | 排序结果，无需检验       |
+| "各品类占比"          | ❌           | 描述性拆解，无统计判断   |
+
+### 2.4 输出 → AgentState
+
+```python
+state.plan = ["sql", "viz", "stats"]
+state.sql_task = "Query monthly revenue by region for the past 12 months"
+state.viz_task = "Create multi-region line chart showing monthly trends"
+state.stats_task = "Test significance of regional growth trends, detect outliers"
+```
+
+---
+
+## 3. SQL Agent
+
+ **文件** ：`backend/agents/sql_agent.py`
+
+ **角色** ：自主生成 SQL，执行查询，处理报错并修正。
+
+ **工具** ：`run_query`、`validate_sql`、`explain_query`
+
+### 3.1 Prompt 结构
+
+```
+[System]
+You are a SQL analyst. Generate DuckDB-compatible SQL to answer the given task.
+
+Tables available:
+{active_tables_with_schema}        ← 表名、列名、类型、样本值、null 率
+
+Join relationships:
+{join_keys}                        ← 已确认的 join key
+
+Data quality notes:
+{quality_notes}                    ← 已应用的清洗决策（如 "amount: non-numeric → null"）
+
+Excluded columns (do NOT use):
+{excluded_columns}                 ← 用户选择 exclude 的列
+
+Rules:
+- Use DuckDB SQL dialect (DATE_TRUNC, STRFTIME, etc.)
+- Always qualify column names with table alias when joining
+- Respect null handling decisions — if a column has nulls from cleaning,
+  note this in your reasoning
+- If a query fails, analyze the error and retry with a corrected version
+- Maximum 3 tool calls per task
+
+[Task]
+{sql_task}                         ← 来自 Planner
+```
+
+### 3.2 Tool 定义
+
+```python
+@tool
+def run_query(sql: str) -> dict:
+    """Execute a SQL query against the DuckDB database.
+  
+    Args:
+        sql: DuckDB-compatible SQL query string
+      
+    Returns:
+        {"columns": [...], "rows": [...], "row_count": N, "execution_ms": N}
+        On error: {"error": "error message", "sql": "original query"}
+    """
+
+@tool
+def validate_sql(sql: str) -> dict:
+    """Validate SQL syntax without executing. Use before complex queries.
+  
+    Returns:
+        {"valid": true} or {"valid": false, "error": "syntax error at..."}
+    """
+
+@tool
+def explain_query(sql: str) -> dict:
+    """Get the query execution plan. Use to check if a query will be efficient.
+  
+    Returns:
+        {"plan": "...execution plan text..."}
+    """
+```
+
+### 3.3 Agent Loop（Tool Calling）
+
+```python
+async def sql_agent(state: AgentState) -> AgentState:
+    messages = [system_prompt, HumanMessage(state.sql_task)]
+    tools = [run_query, validate_sql, explain_query]
+  
+    max_iterations = 3
+    for i in range(max_iterations):
+        response = await llm.bind_tools(tools).ainvoke(messages)
+      
+        if not response.tool_calls:
+            # LLM 决定不调用工具，直接返回推理结果
+            break
+      
+        for tool_call in response.tool_calls:
+            result = await execute_tool(tool_call)
+            messages.append(ToolMessage(result, tool_call_id=...))
+          
+            # 推送 SSE progress
+            emit_sse("progress", {
+                "agent": "SQL Agent",
+                "label": f"step {i+1}",
+                "status": "done" if not result.get("error") else "active"
+            })
+      
+        messages.append(response)
+  
+    # 提取最终 SQL 和结果
+    return state.update(
+        sql_result={
+            "steps": collected_steps,    # 每步的 SQL + 结果
+            "final_rows": last_result["rows"],
+            "final_columns": last_result["columns"],
+            "error": None
+        }
+    )
+```
+
+### 3.4 错误处理策略
+
+```
+第 1 次执行失败：
+  → LLM 收到 error message → 分析原因 → 修正 SQL → 重试
+
+第 2 次执行失败：
+  → LLM 再次分析 → 可能换一种查询方式（如拆成子查询）→ 重试
+
+第 3 次仍失败：
+  → 放弃，返回 error → Critic Agent 标记失败 → 前端显示错误信息
+
+常见错误模式：
+  - 列名拼写错误 → LLM 对比 schema 修正
+  - JOIN 缺失 → LLM 添加 JOIN clause
+  - 类型不匹配 → LLM 添加 CAST
+  - 空结果 → LLM 放宽 WHERE 条件或解释"没有符合条件的数据"
+```
+
+### 3.5 输出格式
+
+```python
+sql_result = {
+    "steps": [
+        {
+            "title": "query · step 1 of 2",
+            "sql": "SELECT region, DATE_TRUNC('month', sale_date) AS month...",
+            "tag": "SQL Agent",
+            "row_count": 36,
+            "execution_ms": 8
+        },
+        {
+            "title": "query · step 2 of 2",
+            "sql": "WITH monthly AS (...) SELECT *, ROUND(...) AS mom_growth...",
+            "tag": "SQL Agent",
+            "row_count": 36,
+            "execution_ms": 5
+        }
+    ],
+    "final_rows": [[...], ...],
+    "final_columns": ["region", "month", "total_revenue", "mom_growth"],
+    "error": None
+}
+```
+
+---
+
+## 4. Viz Agent
+
+ **文件** ：`backend/agents/viz_agent.py`
+
+ **角色** ：根据数据特征选择图表类型，生成 Plotly 配置，同时推荐备选类型。
+
+ **工具** ：`plot_line`、`plot_bar`、`plot_scatter`、`plot_heatmap`、`plot_pie`、`plot_area`
+
+### 4.1 Prompt 结构
+
+```
+[System]
+You are a data visualization specialist. Choose the best chart type for the
+given data and generate Plotly chart configurations.
+
+Data from SQL Agent:
+{sql_result.final_columns}
+{sql_result.final_rows}  (first 5 rows as preview)
+Row count: {sql_result.row_count}
+
+User preferences:
+{preferences.chart_type}           ← 如 "prefers line charts"
+{preferences.color_scheme}         ← 如 "dark theme"
+
+Rules:
+- Choose the chart type that best communicates the data story
+- Always output alt_types: 2-3 alternative chart types that also make sense
+  for this data structure (+ "table" is always included by frontend)
+- Generate Plotly configs for the default type AND all alt_types
+- Use dark theme colors: green=#3effa0, blue=#3a5a7a, amber=#f0a83a
+- Also generate a standalone SVG version for report embedding
+
+[Task]
+{viz_task}                         ← 来自 Planner
+```
+
+### 4.2 Tool 定义
+
+```python
+@tool
+def plot_line(data: dict, layout: dict) -> dict:
+    """Create a line chart. Best for time series and trends.
+  
+    Args:
+        data: Plotly data traces [{x: [...], y: [...], name: "...", mode: "lines"}]
+        layout: Plotly layout config {title, xaxis, yaxis, ...}
+    Returns:
+        {"plotly_config": {...}, "svg": "<svg>...</svg>"}
+    """
+
+@tool
+def plot_bar(data: dict, layout: dict) -> dict:
+    """Create a bar chart. Best for categorical comparisons."""
+
+@tool
+def plot_scatter(data: dict, layout: dict) -> dict:
+    """Create a scatter plot. Best for correlations between two variables."""
+
+@tool
+def plot_heatmap(data: dict, layout: dict) -> dict:
+    """Create a heatmap. Best for matrix/cross-tabulation data."""
+
+@tool
+def plot_pie(data: dict, layout: dict) -> dict:
+    """Create a pie chart. Best for part-to-whole composition (≤7 categories)."""
+
+@tool
+def plot_area(data: dict, layout: dict) -> dict:
+    """Create an area chart. Best for cumulative trends or stacked compositions."""
+```
+
+### 4.3 alt_types 推荐逻辑
+
+LLM 根据数据结构判断合理的备选类型。以下是指导规则（写入 prompt）：
+
+```
+数据结构 → 推荐组合：
+  时间序列 + 多维度        → default: line,  alt: [area, bar]
+  分类 × 数值（≤7 类）    → default: bar,   alt: [pie]
+  分类 × 数值（>7 类）    → default: bar,   alt: []
+  两个连续变量            → default: scatter, alt: []
+  矩阵/交叉表             → default: heatmap, alt: [bar]
+  占比/组成               → default: pie,   alt: [bar]
+
+注意：table 由前端固定添加，agent 不需要输出。
+```
+
+### 4.4 输出格式
+
+```python
+viz_result = {
+    "type": "line",                    # agent 选择的默认类型
+    "alt_types": ["area", "bar"],      # 推荐的备选类型（不含 table）
+    "plotly_config": {                 # 默认类型的 Plotly 配置
+        "data": [...],
+        "layout": {...}
+    },
+    "alt_configs": {                   # 备选类型的 Plotly 配置
+        "area": {"data": [...], "layout": {...}},
+        "bar":  {"data": [...], "layout": {...}}
+    },
+    "table_data": {                    # table 视图的原始数据
+        "headers": ["month", "East", "North", "SW"],
+        "rows": [["Jan", 124800, 208400, 218000], ...]
+    },
+    "svg": "<svg>...</svg>"            # 默认类型的 SVG（Report 嵌入用）
+}
+```
+
+---
+
+## 5. Stats Agent
+
+ **文件** ：`backend/agents/stats_agent.py`
+
+ **角色** ：选择统计方法，执行检验，检测异常值。仅当 Planner 激活时才运行。
+
+ **工具** ：`t_test`、`correlation`、`detect_outliers`、`describe`
+
+### 5.1 Prompt 结构
+
+```
+[System]
+You are a statistical analyst. Run appropriate statistical tests on the data
+to support or challenge the analysis conclusions.
+
+Data from SQL Agent:
+{sql_result.final_columns}
+{sql_result.final_rows}  (preview)
+
+Rules:
+- Choose the most appropriate test for the data type and question
+- Always report p-values with significance level
+- For trends, report r² and confidence intervals
+- For outliers, use 2σ threshold and explain likely causes
+- Do NOT repeat numbers that will appear in the conclusion
+  (the conclusion already says "+34.2%" — your job is to say
+   whether that's statistically significant, not repeat the number)
+- If no meaningful test applies, return empty tests array
+
+[Task]
+{stats_task}                       ← 来自 Planner
+```
+
+### 5.2 Tool 定义
+
+```python
+@tool
+def t_test(group_a: list[float], group_b: list[float], label: str) -> dict:
+    """Run an independent two-sample t-test.
+  
+    Args:
+        group_a: First group of values
+        group_b: Second group of values
+        label: Description of what's being compared (e.g. "East vs North revenue")
+    Returns:
+        {"t_stat": 3.42, "p_value": 0.002, "significant": true, "label": "..."}
+    """
+
+@tool
+def correlation(x: list[float], y: list[float], label: str) -> dict:
+    """Compute Pearson correlation with significance test.
+  
+    Returns:
+        {"r": 0.87, "r_squared": 0.76, "p_value": 0.001, "label": "..."}
+    """
+
+@tool
+def detect_outliers(values: list[float], labels: list[str], method: str = "zscore") -> dict:
+    """Detect outliers using z-score (2σ) or IQR method.
+  
+    Args:
+        values: Numeric values to check
+        labels: Corresponding labels (e.g. month names)
+        method: "zscore" (default) or "iqr"
+    Returns:
+        {"outliers": [{"label": "Jul", "value": 680000, "z_score": 2.3, "note": "..."}]}
+    """
+
+@tool
+def describe(values: list[float], label: str) -> dict:
+    """Compute descriptive statistics.
+  
+    Returns:
+        {"mean": ..., "median": ..., "std": ..., "min": ..., "max": ..., 
+         "q25": ..., "q75": ..., "count": ..., "null_count": ...}
+    """
+```
+
+### 5.3 输出格式
+
+```python
+# 有统计检验时（→ Report Agent 生成 evidence section）
+stats_result = {
+    "tests": [
+        {"key": "East trend significance", "value": "p < 0.01", "significant": True},
+        {"key": "trend r² (linear fit)", "value": "0.91"},
+        {"key": "95% CI (MoM growth)", "value": "±2.1%"},
+        {"key": "SW decline significance", "value": "p = 0.12", "significant": False}
+    ],
+    "outliers": [
+        {"icon": "△", "text": "East Jul ¥680k exceeded 2σ — likely promotional activity"},
+        {"icon": "▽", "text": "SW Nov–Dec consecutive negative, outside normal variance"}
+    ],
+    "summary": {
+        "east_yoy": 0.342,
+        "north_yoy": 0.023,
+        "sw_yoy": -0.041
+    }
+}
+
+# 无统计检验时（简单查询，Planner 不激活 Stats，或激活后 tests 为空）
+stats_result = {
+    "tests": [],        # 空 → Report Agent 不生成 evidence section
+    "outliers": [],
+    "summary": {"mean": 45200, "median": 42800, ...}  # 融入结论文本
+}
+```
+
+### 5.4 Evidence 生成规则
+
+Stats Agent 的输出不直接渲染到前端。Report Agent 根据以下规则决定是否生成 evidence section：
+
+```
+stats_result.tests 非空  → 生成 evidence section
+  → tests 内容放入 "statistical tests" 块
+  → outliers 内容放入 "anomaly detection" 块
+  → summary 数据不进 evidence，由 Report Agent 融入结论文本
+
+stats_result.tests 为空  → 不生成 evidence section
+  → summary 数据由 Report Agent 融入结论文本
+  → outliers 如有，在结论中以文字提及
+```
+
+---
+
+## 6. Critic Agent
+
+ **文件** ：`backend/agents/critic_agent.py`
+
+ **角色** ：审核 worker 输出的逻辑一致性和数据支撑，决定通过或打回重试。
+
+ **工具** ：无（纯推理）
+
+### 6.1 Prompt 结构
+
+```
+[System]
+You are a data analysis critic. Review the analysis results and check for
+logical consistency, data quality issues, and unsupported claims.
+
+User's original question:
+{user_query}
+
+SQL results:
+{sql_result}
+
+Visualization:
+{viz_result.type} chart with {len(viz_result.table_data.rows)} data points
+
+Statistical analysis:
+{stats_result}
+
+Data quality context:
+{quality_notes}                    ← 已应用的清洗决策
+
+Retry context:
+Attempt: {retry_count + 1} of 3
+{critic_feedback if retry_count > 0}  ← 上次打回的原因（重试时）
+
+[Instructions]
+Check the following:
+1. Does the SQL query correctly answer the user's question?
+2. Are the numbers in the conclusion supported by the query results?
+3. Is the chart type appropriate for the data?
+4. Are statistical claims backed by test results?
+5. Are there null value issues that need transparency notes?
+
+Respond with JSON:
+{
+  "verdict": "pass" | "retry",
+  "target": "sql" | "viz" | "stats",   // 打回哪个 agent（retry 时）
+  "feedback": "...",                     // 打回原因 / 通过时的质量说明
+  "transparency_notes": [                // 涉及 null 列时的透明度说明
+    "channel has 149 null values (1.2%) excluded from this analysis"
+  ],
+  "reasoning": "..."                     // 审核推理过程（调试用）
+}
+```
+
+### 6.2 审核检查清单
+
+```
+1. SQL 正确性
+   - 查询的列和条件与问题匹配
+   - JOIN 关系正确
+   - 聚合粒度正确（月/季/年）
+   - WHERE 条件没有遗漏
+
+2. 数据支撑
+   - 结论中的数字可以从 SQL 结果推导出来
+   - 百分比计算正确（分母是什么）
+   - 排名/排序与数据一致
+
+3. 图表匹配
+   - 图表类型与数据结构匹配
+   - 坐标轴标签正确
+   - 图例与数据系列对应
+
+4. 统计严谨性
+   - "显著"有 p 值支撑
+   - "趋势"有 r² 支撑
+   - 置信区间合理
+
+5. 透明度
+   - 涉及 keep_null 列 → 追加说明
+   - 涉及 excluded 列 → 不应出现在结论中
+```
+
+### 6.3 重试逻辑
+
+```python
+async def critic_agent(state: AgentState) -> AgentState:
+    if state.retry_count >= 2:
+        # 超过重试上限，强制通过但标记为低置信度
+        return state.update(
+            critic_verdict="pass",
+            critic_feedback="Passed after max retries — results may need manual verification"
+        )
+  
+    result = await llm.ainvoke(critic_prompt)
+    parsed = parse_json(result)
+  
+    if parsed["verdict"] == "retry":
+        return state.update(
+            critic_verdict="retry",
+            critic_feedback=parsed["feedback"],
+            retry_target=parsed["target"],    # 哪个 agent 需要重做
+            retry_count=state.retry_count + 1
+        )
+  
+    return state.update(
+        critic_verdict="pass",
+        critic_feedback=parsed["feedback"],
+        transparency_notes=parsed.get("transparency_notes", [])
+    )
+```
+
+### 6.4 打回路由
+
+```
+critic_verdict = "retry", target = "sql"
+  → SQL Agent 重新执行，收到 critic_feedback 作为额外指令
+  → Viz Agent 和 Stats Agent 等待新的 SQL 结果
+
+critic_verdict = "retry", target = "viz"
+  → Viz Agent 重新执行，数据不变，只改图表
+  → SQL 和 Stats 结果保留
+
+critic_verdict = "retry", target = "stats"
+  → Stats Agent 重新执行
+  → SQL 和 Viz 结果保留
+```
+
+---
+
+## 7. Report Agent
+
+ **文件** ：`backend/agents/report_agent.py`
+
+ **角色** ：整合所有 worker 输出，判断是否值得记录，生成结构化报告。
+
+ **工具** ：`write_file`（导出用）
+
+### 7.1 Prompt 结构
+
+```
+[System]
+You are a report writer. Synthesize the analysis results into a clear,
+structured conclusion for a data analyst audience.
+
+User's question:
+{user_query}
+
+SQL results summary:
+{sql_result_summary}
+
+Chart type: {viz_result.type}
+Statistical tests: {stats_result.tests}  (may be empty)
+Outliers: {stats_result.outliers}
+Summary stats: {stats_result.summary}
+
+Critic feedback:
+{critic_feedback}
+
+Transparency notes:
+{transparency_notes}
+
+Strategy version: {strategy_version}
+
+[Instructions]
+1. Write a concise conclusion (2-4 sentences) answering the user's question.
+   - Highlight key numbers with significance
+   - If stats tests exist, reference significance but don't repeat p-values
+     (those go in the evidence section)
+   - If stats tests are empty, weave summary stats into the conclusion naturally
+
+2. Determine should_record:
+   - true: SQL executed with results, chart generated, or statistical conclusion reached
+   - false: conceptual question, clarification, failed analysis
+
+3. If stats_result.tests is non-empty, assemble the evidence section:
+   - tests: key metrics (p-values, CI, r²) that aren't already in the conclusion
+   - anomalies: outlier descriptions
+   DO NOT include numbers already stated in the conclusion.
+
+4. Generate a title (≤10 words) for the record.
+
+Respond with JSON:
+{
+  "title": "Monthly revenue trend by region",
+  "conclusion": "East region grew the fastest...",
+  "should_record": true,
+  "evidence": {                        // null if tests is empty
+    "tests": [...],
+    "anomalies": [...]
+  } | null
+}
+```
+
+### 7.2 记录判断逻辑
+
+```python
+def should_record(state: AgentState, report_output: dict) -> bool:
+    # 规则一：agent 自己的判断
+    if not report_output["should_record"]:
+        return False
+  
+    # 规则二：硬性条件
+    has_sql = state.sql_result and not state.sql_result.get("error")
+    has_viz = state.viz_result is not None
+    has_stats = state.stats_result and len(state.stats_result.get("tests", [])) > 0
+  
+    return has_sql or has_viz or has_stats
+```
+
+### 7.3 输出格式
+
+```python
+# 完整输出（推送为 SSE record 事件 + done 事件）
+report = {
+    "id": 3,
+    "title": "Online vs offline channel divergence",
+    "query": state.user_query,
+    "time": "14:45",
+    "conclusion": "Online channel revenue is 38% higher than offline...",
+    "critic_note": "Divergence trend confirmed. Recommend checking...",
+    "chart_svg": state.viz_result["svg"],
+    "chart_config": {
+        "default_type": state.viz_result["type"],
+        "alt_types": state.viz_result["alt_types"],
+        "configs": {
+            state.viz_result["type"]: state.viz_result["plotly_config"],
+            **state.viz_result["alt_configs"]
+        },
+        "table_data": state.viz_result["table_data"]
+    },
+    "sql_steps": state.sql_result["steps"],
+    "evidence": report_output["evidence"],  # null if no tests
+    "starred": False,
+    "strategy_version": state.strategy_version,
+    "status": "done"
+}
+```
+
+### 7.4 不记录时的输出
+
+```python
+# should_record = false → 仅推送 done 事件，不推送 record 事件
+done_event = {
+    "exchange_id": state.exchange_id,
+    "report": {
+        "conclusion": "The 'channel' column contains the sales channel...",
+        "should_record": False,
+        "strategy_version": state.strategy_version
+    }
+}
+```
+
+---
+
+## 8. Base Agent
+
+ **文件** ：`backend/agents/base.py`
+
+所有 agent 共用的基类，封装 LLM 调用、tool 执行、SSE 推送。
+
+```python
+class BaseAgent:
+    """Base class for all agents."""
+  
+    def __init__(self, name: str, tools: list = None):
+        self.name = name
+        self.tools = tools or []
+        self.llm = get_llm()           # 从 settings 读取 provider + model
+  
+    async def invoke(self, state: AgentState) -> AgentState:
+        """Override in subclasses."""
+        raise NotImplementedError
+  
+    async def call_llm(self, messages: list, tools: list = None) -> AIMessage:
+        """Call LLM with optional tool binding."""
+        if tools:
+            return await self.llm.bind_tools(tools).ainvoke(messages)
+        return await self.llm.ainvoke(messages)
+  
+    async def execute_tool(self, tool_call: ToolCall) -> str:
+        """Route tool call to registry and execute."""
+        from backend.tools.registry import execute
+        return await execute(tool_call.name, tool_call.args)
+  
+    def emit_progress(self, state: AgentState, label: str, status: str):
+        """Push SSE progress event."""
+        state.stream_events.append({
+            "type": "progress",
+            "agent": self.name,
+            "label": label,
+            "status": status
+        })
+```
+
+---
+
+## 9. Tool Registry
+
+ **文件** ：`backend/tools/registry.py`
+
+集中管理所有工具的注册和路由。
+
+```python
+from backend.tools.sql_tools import run_query, validate_sql, explain_query
+from backend.tools.viz_tools import plot_line, plot_bar, plot_scatter, plot_heatmap, plot_pie, plot_area
+from backend.tools.stats_tools import t_test, correlation, detect_outliers, describe
+from backend.tools.data_tools import write_file
+
+# 按 agent 分组注册
+TOOL_REGISTRY = {
+    "sql": [run_query, validate_sql, explain_query],
+    "viz": [plot_line, plot_bar, plot_scatter, plot_heatmap, plot_pie, plot_area],
+    "stats": [t_test, correlation, detect_outliers, describe],
+    "report": [write_file],
+}
+
+def get_tools(agent_name: str) -> list:
+    """Get registered tools for an agent."""
+    return TOOL_REGISTRY.get(agent_name, [])
+
+async def execute(tool_name: str, args: dict) -> str:
+    """Route and execute a tool call by name."""
+    all_tools = {t.name: t for tools in TOOL_REGISTRY.values() for t in tools}
+    tool = all_tools.get(tool_name)
+    if not tool:
+        raise ValueError(f"Unknown tool: {tool_name}")
+    return await tool.ainvoke(args)
+```
+
+新增工具只需：
+
+1. 在对应的 `*_tools.py` 文件中用 `@tool` 装饰器定义函数
+2. 在 `registry.py` 中 import 并添加到对应 agent 的工具列表
+3. Agent 自动获得新工具的能力（通过 schema 感知）
+
+---
+
+## 10. LangGraph Pipeline
+
+ **文件** ：`backend/graph/pipeline.py`、`backend/graph/router.py`、`backend/graph/state.py`
+
+### 10.1 Graph 结构
+
+```python
+from langgraph.graph import StateGraph, END
+
+def build_pipeline():
+    graph = StateGraph(AgentState)
+  
+    # 节点
+    graph.add_node("planner", planner_agent)
+    graph.add_node("sql_agent", sql_agent)
+    graph.add_node("viz_agent", viz_agent)
+    graph.add_node("stats_agent", stats_agent)
+    graph.add_node("critic", critic_agent)
+    graph.add_node("report", report_agent)
+  
+    # 入口
+    graph.set_entry_point("planner")
+  
+    # Planner → SQL（质量检查通过后）
+    graph.add_conditional_edges("planner", route_after_planner)
+  
+    # SQL → fan-out: Viz + Stats 并行（条件路由）
+    graph.add_conditional_edges("sql_agent", route_after_sql)
+  
+    # Viz / Stats → Critic（reducer 合并后）
+    graph.add_edge("viz_agent", "critic")
+    graph.add_edge("stats_agent", "critic")
+  
+    # Critic → 条件路由
+    graph.add_conditional_edges("critic", route_after_critic)
+  
+    # Report → END
+    graph.add_edge("report", END)
+  
+    return graph.compile()
+```
+
+### 10.2 路由函数
+
+```python
+def route_after_planner(state: AgentState) -> str:
+    """Planner → SQL Agent (or END if quality blocked)."""
+    if state.get("quality_blocked"):
+        return END  # 被 WARNING 列阻断，等待用户决策
+  
+    if "sql" in state.plan:
+        return "sql_agent"
+  
+    return END  # 没有 SQL 任务（罕见，如纯概念问题）
+
+def route_after_sql(state: AgentState) -> list[str]:
+    """SQL 完成后 fan-out: Viz + Stats 并行。"""
+    if state.sql_result and state.sql_result.get("error"):
+        # SQL 失败，跳过 Viz/Stats，直接进 Critic 处理
+        return ["critic"]
+  
+    agents = []
+    if "viz" in state.plan:   agents.append("viz_agent")
+    if "stats" in state.plan: agents.append("stats_agent")
+  
+    # 如果 Planner 只激活了 SQL（无 viz/stats），直接进 Critic
+    return agents or ["critic"]
+
+def route_after_critic(state: AgentState) -> str:
+    """Critic routing: pass → report, retry → target worker."""
+    if state.critic_verdict == "pass":
+        return "report"
+  
+    # Retry — route back to the specific agent
+    target_map = {
+        "sql": "sql_agent",
+        "viz": "viz_agent",
+        "stats": "stats_agent"
+    }
+    return target_map.get(state.retry_target, "report")
+```
+
+### 10.3 State Reducer
+
+```python
+# AgentState 的 worker 输出字段使用 reducer 合并策略：
+# SQL Agent 先行，其输出不涉及并行冲突
+# Viz + Stats 并行时，每个 worker 只更新自己的字段
+# reducer 策略：last-write-wins（每个字段只有一个 writer）
+
+# sql_result   ← SQL Agent 写入（串行阶段，无冲突）
+# viz_result   ← Viz Agent 写入（并行阶段）
+# stats_result ← Stats Agent 写入（并行阶段）
+# Viz 和 Stats 写入不同字段，不存在冲突
+```
+
+---
+
+## 11. Prompt 管理
+
+ **文件** ：`backend/config/prompts.py`
+
+所有 prompt 模板集中管理，不散落在 agent 文件中。
+
+```python
+# prompts.py
+
+PLANNER_SYSTEM = """You are a data analysis planner..."""
+
+SQL_AGENT_SYSTEM = """You are a SQL analyst..."""
+
+VIZ_AGENT_SYSTEM = """You are a data visualization specialist..."""
+
+STATS_AGENT_SYSTEM = """You are a statistical analyst..."""
+
+CRITIC_SYSTEM = """You are a data analysis critic..."""
+
+REPORT_SYSTEM = """You are a report writer..."""
+
+# 通用片段（多个 prompt 共用）
+TABLE_SCHEMA_TEMPLATE = """
+Table: {name} ({row_count} rows)
+Columns:
+{columns_formatted}
+"""
+
+QUALITY_NOTES_TEMPLATE = """
+Data quality decisions applied:
+{decisions_formatted}
+"""
+```
+
+Agent 文件通过 import 引用：
+
+```python
+# sql_agent.py
+from backend.config.prompts import SQL_AGENT_SYSTEM, TABLE_SCHEMA_TEMPLATE
+```
+
+修改 prompt 只需编辑 `prompts.py` 一个文件，不需要找遍所有 agent。配合 eval 框架，修改后立即跑回归测试验证效果。
+
+---
+
+## 12. 关键实现备注
+
+**为什么 agent 之间通过 AgentState 传数据而不是自然语言？**
+自然语言传递会引入 LLM 理解偏差——SQL Agent 输出的数字经过 Critic Agent 的自然语言转述后可能丢失精度。结构化的 `sql_result`、`viz_result`、`stats_result` 字段确保数据精确传递，每个 agent 读到的是原始结果而非二次解读。
+
+**为什么 Planner 不调用工具？**
+Planner 的职责是任务分解和路由，不涉及数据操作。如果 Planner 也能调用工具（如提前查询 schema），会模糊 Planner 和 SQL Agent 的边界。保持 Planner 纯推理，让它专注于"怎么拆解这个问题"，不操心"数据长什么样"。
+
+**为什么 Stats Agent 是条件激活而不是每次都跑？**
+Stats Agent 的输出用于生成 evidence section。如果每次都跑，简单查询（"上月销售额多少"）也会附带一堆 p 值和异常检测，对用户是噪音。Planner 通过问题模式判断是否需要统计支撑，只在有意义时激活。
+
+**为什么 Critic 最多重试 2 次？**
+无限重试会导致用户长时间等待。2 次重试足够修复常见错误（SQL 语法、列名拼写），如果 3 次仍失败，问题大概率出在用户问题本身（如请求的数据不存在），继续重试不会改善结果。超限后 Critic 强制通过并标记低置信度，让用户自己判断。
+
+**为什么 prompt 集中管理而不是写在各 agent 文件里？**
+一是修改方便——调 prompt 是最频繁的操作，集中在一个文件不需要在 6 个 agent 文件里来回跳。二是 eval 验证——改了 prompt 后跑 `eval/runner.py` 回归测试，能立刻看到哪些 case 受影响。三是避免重复——`TABLE_SCHEMA_TEMPLATE` 被 SQL Agent、Viz Agent、Stats Agent 共用，不需要在三个文件里各写一份。
