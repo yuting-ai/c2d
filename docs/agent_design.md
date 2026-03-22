@@ -54,7 +54,7 @@
 
  **文件** ：`backend/agents/planner.py`
 
- **角色** ：理解用户意图，拆解子任务，决定激活哪些 worker，执行 WARNING 列交叉检查。
+ **角色** ：理解用户意图，决定回答方式——直接回答（schema 元数据问题）或激活 worker agents（数据分析问题），执行 WARNING 列交叉检查。
 
  **工具** ：无（纯推理）
 
@@ -63,9 +63,20 @@
 ```
 [System]
 You are a data analysis planner. Your job is to understand the user's question
-and decide which specialist agents to activate.
+and decide how to answer it.
 
-Available agents:
+You have two options:
+
+OPTION 1 — DIRECT ANSWER (no agents needed):
+Use when the question can be answered from the table schema alone.
+Examples: "what is this dataset about", "what columns are available",
+"what does the X column mean", conceptual questions, clarifications.
+
+OPTION 2 — ACTIVATE AGENTS (need to query data):
+Use when the question requires actual data retrieval or computation.
+Examples: "top 5 products by sales", "monthly revenue trend", "compare A vs B".
+
+Available agents for Option 2:
 - sql: Generates and executes SQL queries against DuckDB tables
 - viz: Creates charts and visualizations (Plotly)
 - stats: Runs statistical tests, detects outliers, computes significance
@@ -73,31 +84,29 @@ Available agents:
 Available tables:
 {active_tables}                    ← 从 AgentState.active_tables 注入
 
-Column quality warnings (unresolved):
-{warning_columns}                  ← WARNING 级别且未处理的列
-
-User preferences:
-{preferences}                      ← 从 Memory.preferences 注入
-
-Recent analysis history:
-{short_term_context}               ← 从 Memory.short_term 注入
-
-Relevant past analyses:
-{long_term_recalls}                ← 从 Memory.long_term 语义召回
+Data quality notes:
+{quality_notes}                    ← 已应用的清洗决策
 
 [User]
 {user_query}
 
 [Instructions]
 Respond with a JSON object:
+
+For OPTION 1 (direct answer):
+{
+  "plan": [],
+  "direct_answer": "Your answer here based on schema context",
+  "reasoning": "This is a meta/conceptual question"
+}
+
+For OPTION 2 (activate agents):
 {
   "plan": ["sql", "viz"],           // 要激活的 agent 列表
   "sql_task": "...",                // SQL Agent 的任务描述
   "viz_task": "...",                // Viz Agent 的任务描述（如激活）
   "stats_task": "...",              // Stats Agent 的任务描述（如激活）
   "involved_columns": ["col1"],     // 本次分析涉及的列名
-  "quality_blocked": false,         // 是否被 WARNING 列阻断
-  "blocked_column": null,           // 阻断列名（如有）
   "reasoning": "..."                // 决策推理过程（调试用）
 }
 ```
@@ -105,34 +114,48 @@ Respond with a JSON object:
 ### 2.2 决策逻辑
 
 ```python
-def plan(state: AgentState) -> AgentState:
-    # 1. 组装 prompt：注入 active_tables、warnings、preferences、memory
+async def planner_agent(state: AgentState) -> dict:
+    # 1. 组装 prompt：注入 active_tables、quality_notes
     # 2. LLM 推理，解析 JSON 输出
-    # 3. WARNING 交叉检查
-  
-    involved = planner_output["involved_columns"]
-    warnings = [w for w in state.warning_issues if w.column in involved]
-  
-    if warnings:
-        # 升级为阻断 → 推送 quality_block SSE 事件，暂停 pipeline
-        return state.update(
-            quality_blocked=True,
-            blocked_column=warnings[0].column
-        )
-  
-    # 4. Stats Agent 条件激活
-    #    只有问题涉及统计判断时才激活：
-    #    - 趋势/增长/下降判断
-    #    - 差异/比较/显著性
-    #    - 异常/离群值检测
-    #    简单查询（top N、排序、聚合）不激活 Stats
-  
-    return state.update(
-        plan=planner_output["plan"],
-        sql_task=planner_output["sql_task"],
-        viz_task=planner_output.get("viz_task"),
-        stats_task=planner_output.get("stats_task")
-    )
+    # 3. 判断回答方式
+
+    plan = parsed.get("plan", [])
+    direct_answer = parsed.get("direct_answer")
+
+    # ── 直接回答路径：不需要任何 worker ──
+    if not plan and direct_answer:
+        return {
+            "plan": [],
+            "sql_result": {
+                "steps": [], "final_rows": [], "final_columns": [],
+                "error": None, "answer": direct_answer,
+            },
+            "stream_events": [progress_event],
+        }
+
+    # ── Worker 激活路径 ──
+    # WARNING 交叉检查（Phase 4 实现）
+    # Stats Agent 条件激活（Phase 4 实现）
+
+    return {
+        "plan": plan if plan else ["sql"],
+        "sql_task": parsed.get("sql_task", state["user_query"]),
+        "viz_task": parsed.get("viz_task"),
+        "stats_task": parsed.get("stats_task"),
+        "involved_columns": parsed.get("involved_columns", []),
+        "stream_events": [progress_event],
+    }
+```
+
+Pipeline 路由在 `pipeline.py` 中实现：
+
+```python
+def route_after_planner(state: AgentState) -> str:
+    if not state.get("plan"):
+        return END               # 直接回答，跳过所有 worker
+    if "sql" in state["plan"]:
+        return "sql_agent"
+    return END
 ```
 
 ### 2.3 Stats 激活判断标准
@@ -149,11 +172,37 @@ def plan(state: AgentState) -> AgentState:
 ### 2.4 输出 → AgentState
 
 ```python
+# 直接回答路径
+state.plan = []
+state.sql_result = {"answer": "这是一个视频游戏销售数据集..."}
+
+# Worker 激活路径
 state.plan = ["sql", "viz", "stats"]
 state.sql_task = "Query monthly revenue by region for the past 12 months"
 state.viz_task = "Create multi-region line chart showing monthly trends"
 state.stats_task = "Test significance of regional growth trends, detect outliers"
 ```
+
+### 2.5 SSE Trace 命名
+
+所有 agent 推送的 SSE progress 事件中，`agent` 字段统一使用 `"analyst"`，不暴露内部 agent 名称给用户。步骤 label 使用自然语言描述：
+
+```python
+# Planner 推送
+{"agent": "analyst", "label": "planning analysis", "status": "done"}
+
+# SQL Agent 推送
+{"agent": "analyst", "label": "querying data · step 1", "status": "active"}
+{"agent": "analyst", "label": "querying data · 2 queries", "status": "done"}
+
+# Report Agent 推送
+{"agent": "analyst", "label": "writing conclusion", "status": "done"}
+
+# Planner 直接回答
+{"agent": "analyst", "label": "answering from schema context", "status": "done"}
+```
+
+前端显示为统一的 "analyst" 头像 + thinking block，用户感知上是在和一个分析师对话，不需要关心内部有几个 agent。
 
 ---
 
@@ -683,67 +732,75 @@ critic_verdict = "retry", target = "stats"
 
  **文件** ：`backend/agents/report_agent.py`
 
- **角色** ：整合所有 worker 输出，判断是否值得记录，生成结构化报告。
+ **角色** ：整合所有 worker 输出，生成自然语言结论。用户的语言跟随用户提问（中文问中文答）。
 
- **工具** ：`write_file`（导出用）
+ **工具** ：无（Phase 3）；`write_file`（Phase 4 导出用）
 
-### 7.1 Prompt 结构
+### 7.1 Phase 3 实现（当前）
+
+当前 Report Agent 只接收 SQL 结果，写出 2-4 句结论。一次 LLM 调用，不涉及 tool calling。
 
 ```
 [System]
-You are a report writer. Synthesize the analysis results into a clear,
-structured conclusion for a data analyst audience.
+You are a data analyst writing a conclusion for your team.
+You receive a user's question and the SQL query results. Write a clear, concise answer.
+
+Rules:
+- Answer the user's question directly in 2-4 sentences
+- Highlight key numbers and trends
+- If the data shows something surprising or noteworthy, mention it
+- Use natural language, not bullet points
+- If the query returned no results or errored, explain what happened
+- Reply in the same language as the user's question
 
 User's question:
 {user_query}
 
-SQL results summary:
-{sql_result_summary}
+Table context:
+{active_tables}
 
-Chart type: {viz_result.type}
-Statistical tests: {stats_result.tests}  (may be empty)
-Outliers: {stats_result.outliers}
-Summary stats: {stats_result.summary}
-
-Critic feedback:
-{critic_feedback}
-
-Transparency notes:
-{transparency_notes}
-
-Strategy version: {strategy_version}
-
-[Instructions]
-1. Write a concise conclusion (2-4 sentences) answering the user's question.
-   - Highlight key numbers with significance
-   - If stats tests exist, reference significance but don't repeat p-values
-     (those go in the evidence section)
-   - If stats tests are empty, weave summary stats into the conclusion naturally
-
-2. Determine should_record:
-   - true: SQL executed with results, chart generated, or statistical conclusion reached
-   - false: conceptual question, clarification, failed analysis
-
-3. If stats_result.tests is non-empty, assemble the evidence section:
-   - tests: key metrics (p-values, CI, r²) that aren't already in the conclusion
-   - anomalies: outlier descriptions
-   DO NOT include numbers already stated in the conclusion.
-
-4. Generate a title (≤10 words) for the record.
-
-Respond with JSON:
-{
-  "title": "Monthly revenue trend by region",
-  "conclusion": "East region grew the fastest...",
-  "should_record": true,
-  "evidence": {                        // null if tests is empty
-    "tests": [...],
-    "anomalies": [...]
-  } | null
-}
+SQL results:
+{sql_summary}                      ← 列名 + 前 30 行 + SQL 语句
 ```
 
-### 7.2 记录判断逻辑
+```python
+async def report_agent(state: AgentState) -> dict:
+    # 1. 从 sql_result 构建可读的数据摘要
+    # 2. 一次 LLM 调用生成结论
+    # 3. 返回 conclusion + should_record 判断
+
+    return {
+        "sql_result": {**sql_result, "answer": conclusion},
+        "report": {
+            "conclusion": conclusion,
+            "should_record": bool(final_rows),
+            "strategy_version": 1,
+        },
+        "should_record": bool(final_rows),
+        "stream_events": [progress_event],
+    }
+```
+
+### 7.2 Phase 4 扩展计划
+
+Phase 4 Report Agent 将扩展为接收所有 worker 输出（SQL + Viz + Stats + Critic），生成结构化报告：
+
+```
+扩展输入：
+  - sql_result      → 数据结论
+  - viz_result      → 嵌入图表 SVG
+  - stats_result    → evidence section（条件生成）
+  - critic_feedback → 审核意见
+
+扩展输出：
+  - title           → 记录标题（≤10 words）
+  - conclusion      → 结论文本
+  - evidence        → {tests, anomalies} | null
+  - should_record   → 是否追加到 report_records
+  - chart_svg       → 嵌入图表
+```
+
+### 7.3 记录判断逻辑
 
 ```python
 def should_record(state: AgentState, report_output: dict) -> bool:
@@ -759,7 +816,7 @@ def should_record(state: AgentState, report_output: dict) -> bool:
     return has_sql or has_viz or has_stats
 ```
 
-### 7.3 输出格式
+### 7.4 完整输出格式（Phase 4 目标）
 
 ```python
 # 完整输出（推送为 SSE record 事件 + done 事件）
@@ -788,7 +845,7 @@ report = {
 }
 ```
 
-### 7.4 不记录时的输出
+### 7.5 不记录时的输出
 
 ```python
 # should_record = false → 仅推送 done 事件，不推送 record 事件
@@ -808,41 +865,31 @@ done_event = {
 
  **文件** ：`backend/agents/base.py`
 
-所有 agent 共用的基类，封装 LLM 调用、tool 执行、SSE 推送。
+提供 `get_llm()` 工厂函数，根据 settings 创建对应的 LLM 客户端。每个 agent 是独立的 async 函数，不使用类继承。
 
 ```python
-class BaseAgent:
-    """Base class for all agents."""
-  
-    def __init__(self, name: str, tools: list = None):
-        self.name = name
-        self.tools = tools or []
-        self.llm = get_llm()           # 从 settings 读取 provider + model
-  
-    async def invoke(self, state: AgentState) -> AgentState:
-        """Override in subclasses."""
-        raise NotImplementedError
-  
-    async def call_llm(self, messages: list, tools: list = None) -> AIMessage:
-        """Call LLM with optional tool binding."""
-        if tools:
-            return await self.llm.bind_tools(tools).ainvoke(messages)
-        return await self.llm.ainvoke(messages)
-  
-    async def execute_tool(self, tool_call: ToolCall) -> str:
-        """Route tool call to registry and execute."""
-        from backend.tools.registry import execute
-        return await execute(tool_call.name, tool_call.args)
-  
-    def emit_progress(self, state: AgentState, label: str, status: str):
-        """Push SSE progress event."""
-        state.stream_events.append({
-            "type": "progress",
-            "agent": self.name,
-            "label": label,
-            "status": status
-        })
+from langchain_openai import ChatOpenAI
+from backend.config.settings import settings
+
+def get_llm(temperature: float = 0) -> ChatOpenAI:
+    """Get LLM instance based on settings."""
+    if settings.LLM_PROVIDER == "deepseek":
+        return ChatOpenAI(
+            model=settings.LLM_MODEL,
+            api_key=settings.DEEPSEEK_API_KEY,
+            base_url=settings.DEEPSEEK_BASE_URL,
+            temperature=temperature,
+        )
+    elif settings.LLM_PROVIDER == "anthropic":
+        return ChatOpenAI(
+            model=settings.LLM_MODEL,
+            api_key=settings.ANTHROPIC_API_KEY,
+            base_url="https://api.anthropic.com/v1/",
+            temperature=temperature,
+        )
 ```
+
+每个 agent 的签名统一为 `async def xxx_agent(state: AgentState) -> dict`，返回需要更新的 state 字段。LangGraph 自动合并返回值到 AgentState。
 
 ---
 
@@ -1046,3 +1093,12 @@ Stats Agent 的输出用于生成 evidence section。如果每次都跑，简单
 
 **为什么 prompt 集中管理而不是写在各 agent 文件里？**
 一是修改方便——调 prompt 是最频繁的操作，集中在一个文件不需要在 6 个 agent 文件里来回跳。二是 eval 验证——改了 prompt 后跑 `eval/runner.py` 回归测试，能立刻看到哪些 case 受影响。三是避免重复——`TABLE_SCHEMA_TEMPLATE` 被 SQL Agent、Viz Agent、Stats Agent 共用，不需要在三个文件里各写一份。
+
+**为什么 Planner 能直接回答而不是加一个 Router？**
+Planner 已经有完整的 schema 上下文（表名、列名、行数、清洗决策），回答"这是什么数据"不需要额外信息，也不需要额外的 LLM 调用。在同一次调用里判断"直接回答"还是"激活 worker"，是"理解意图"的自然延伸。如果未来分类准确率不够，可以在前面加一层轻量 Router，Planner 的接口不变。
+
+**为什么对用户统一展示为 "analyst" 而不是暴露各 agent 名字？**
+用户不关心内部有几个 agent、各自叫什么。对用户来说，整个系统是"一个分析师在帮我做事"。trace 里显示 "planning analysis → querying data → writing conclusion" 比 "Planner done → SQL Agent active → Report Agent active" 更直观。前端只需要一个头像 + 一个 thinking block，不需要为每个 agent 画不同的 UI。
+
+**为什么 Report Agent 是独立节点而不是让 SQL Agent 自己总结？**
+SQL Agent 的 prompt 专注于"写出正确的 SQL 并执行"，如果同时要求"用自然语言总结结果"，两个目标会互相干扰——LLM 可能为了措辞好看而牺牲 SQL 正确性，或者为了 SQL 正确而给出干巴巴的总结（如 "Analysis complete."）。拆成两个节点，SQL Agent 只管查数据，Report Agent 拿到完整结果后专注写人话。Phase 4 扩展时，Report Agent 还会接收 Viz/Stats/Critic 的输出，职责天然适合在 pipeline 末尾。

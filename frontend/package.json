@@ -12,8 +12,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zustand": "^5.0.0",
-    "plotly.js-dist-min": "^2.35.0",
-    "react-plotly.js": "^2.6.0"
+    "recharts": "^2.15.0"
   },
   "devDependencies": {
     "@types/react": "^19.1.0",

@@ -32,24 +32,31 @@ async def run_analysis_stream(
     }
 
     final_sql_result = {}
+    final_viz_result = None
+    final_stats_result = None
+    final_report = None
 
     try:
         logger.info(f"Starting pipeline: project={project_id} query={query[:80]}")
 
-        # astream with updates mode: yields {node_name: state_update} per node
         async for chunk in pipeline.astream(initial_state, stream_mode="updates"):
             for node_name, update in chunk.items():
                 logger.info(f"Node completed: {node_name}")
 
-                # Yield accumulated events from this node
                 for event in update.get("stream_events", []):
                     event_type = event.get("type", "progress")
                     event_data = event.get("data", {})
                     yield {"event": event_type, "data": json.dumps(event_data, default=str)}
 
-                # Track sql_result for final done event
+                # Track results
                 if "sql_result" in update:
                     final_sql_result = update["sql_result"]
+                if "viz_result" in update and update["viz_result"]:
+                    final_viz_result = update["viz_result"]
+                if "stats_result" in update and update["stats_result"]:
+                    final_stats_result = update["stats_result"]
+                if "report" in update and update["report"]:
+                    final_report = update["report"]
 
         # Yield done event
         answer = final_sql_result.get("answer", "")
@@ -66,11 +73,13 @@ async def run_analysis_stream(
                 }),
             }
         else:
+            report_data = final_report or {}
             done_data = {
                 "report": {
                     "conclusion": answer,
-                    "should_record": bool(final_sql_result.get("final_rows")),
-                    "strategy_version": 1,
+                    "should_record": report_data.get("should_record", bool(final_sql_result.get("final_rows"))),
+                    "strategy_version": report_data.get("strategy_version", 1),
+                    "evidence": report_data.get("evidence"),
                 },
                 "sql_result": {
                     "columns": final_sql_result.get("final_columns", []),
@@ -81,6 +90,10 @@ async def run_analysis_stream(
                     ],
                 },
             }
+            if final_viz_result:
+                done_data["viz_result"] = final_viz_result
+            if final_stats_result:
+                done_data["stats_result"] = final_stats_result
             yield {"event": "done", "data": json.dumps(done_data, default=str)}
 
         logger.info(f"Pipeline completed: project={project_id}")

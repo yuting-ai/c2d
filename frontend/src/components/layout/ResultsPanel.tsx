@@ -1,4 +1,8 @@
-import { useUIStore } from '../../stores/uiStore'
+import { useResultsStore } from '../../stores/resultsStore'
+import ChartTab from '../results/chart/ChartTab'
+import SqlTab from '../results/sql/SqlTab'
+import ReportTab from '../results/report/ReportTab'
+import SchemaTab from '../results/SchemaTab'
 
 const TABS = [
   { key: 'schema', label: 'schema' },
@@ -8,8 +12,11 @@ const TABS = [
 ] as const
 
 export default function ResultsPanel() {
-  const activeTab = useUIStore((s) => s.activeResultTab)
-  const setTab = useUIStore((s) => s.setActiveResultTab)
+  const activeTab = useResultsStore((s) => s.activeTab)
+  const setTab = useResultsStore((s) => s.setActiveTab)
+  const chartCount = useResultsStore((s) => s.chartRecords.length)
+  const sqlCount = useResultsStore((s) => s.sqlRecords.length)
+  const reportCount = useResultsStore((s) => s.reportRecords.length)
 
   return (
     <>
@@ -21,56 +28,25 @@ export default function ResultsPanel() {
             onClick={() => setTab(t.key)}
           >
             {t.label}
+            {t.key === 'chart' && chartCount > 0 && (
+              <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--green)', marginLeft: 4 }}>{chartCount}</span>
+            )}
+            {t.key === 'sql' && sqlCount > 0 && (
+              <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--green)', marginLeft: 4 }}>{sqlCount}</span>
+            )}
+            {t.key === 'report' && reportCount > 0 && (
+              <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--green)', marginLeft: 4 }}>{reportCount}</span>
+            )}
           </div>
         ))}
       </div>
 
       <div className="results-body">
-        {activeTab === 'schema' && <SchemaPlaceholder />}
-        {activeTab === 'chart' && <ChartPlaceholder />}
-        {activeTab === 'sql' && <SqlPlaceholder />}
-        {activeTab === 'report' && <ReportPlaceholder />}
+        {activeTab === 'schema' && <SchemaTab />}
+        {activeTab === 'chart' && <ChartTab />}
+        {activeTab === 'sql' && <SqlTab />}
+        {activeTab === 'report' && <ReportTab />}
       </div>
     </>
-  )
-}
-
-function SchemaPlaceholder() {
-  return (
-    <div className="placeholder">
-      <div className="placeholder-icon">⊘</div>
-      <div className="placeholder-title">schema</div>
-      <div className="placeholder-desc">Upload a dataset to see column types, quality issues, and sample data.</div>
-    </div>
-  )
-}
-
-function ChartPlaceholder() {
-  return (
-    <div className="placeholder">
-      <div className="placeholder-icon">📊</div>
-      <div className="placeholder-title">no charts yet</div>
-      <div className="placeholder-desc">Ask a question about your data to generate visualizations.</div>
-    </div>
-  )
-}
-
-function SqlPlaceholder() {
-  return (
-    <div className="placeholder">
-      <div className="placeholder-icon">⌘</div>
-      <div className="placeholder-title">no queries yet</div>
-      <div className="placeholder-desc">SQL queries will appear here as the agent generates them.</div>
-    </div>
-  )
-}
-
-function ReportPlaceholder() {
-  return (
-    <div className="placeholder">
-      <div className="placeholder-icon">📄</div>
-      <div className="placeholder-title">no analysis records</div>
-      <div className="placeholder-desc">Analysis conclusions will accumulate here as a structured report.</div>
-    </div>
   )
 }

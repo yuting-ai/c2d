@@ -1,3 +1,4 @@
+
 # c2d — Frontend Implementation
 
 本文档覆盖前端实现层面的具体设计，是 architecture.md Section 9（UI Design）的 implementation 对照。architecture.md 负责"是什么、为什么"，本文档负责"怎么实现"。
@@ -43,15 +44,17 @@
 │   │   │       ├── <StrategyNotice>   ← 重新展开时显示
 │   │   │       └── <ConfirmButton>
 │   │   │
-│   │   └── <ChatPanel>               ← chat mode 时显示
+│   │   └── <ChatPanel>               ← chat mode 时显示，对话式 UI
 │   │       ├── <ChatMessages>
-│   │       │   └── <ChatExchange> ×N  ← 折叠式 Q&A 块
-│   │       │       ├── <ExchangeHeader>   ← 点击折叠/展开
-│   │       │       └── <ExchangeBody>
-│   │       │           ├── <UserMessage>
-│   │       │           └── <AgentMessage>
-│   │       │               ├── <AgentTrace>
-│   │       │               └── <AgentBubble>
+│   │       │   └── <ConversationTurn> ×N  ← 每轮：用户气泡 + analyst 回复
+│   │       │       ├── <MsgUser>          ← 右对齐气泡
+│   │       │       └── <MsgAnalyst>       ← 左对齐，analyst 头像
+│   │       │           ├── <AnalystHeader>     ← 绿色 A 头像 + "analyst"
+│   │       │           └── <AnalystContent>
+│   │       │               ├── <ThinkingBlock>  ← trace 步骤，完成后自动折叠
+│   │       │               ├── <TypingDots>     ← 绿色跳动圆点（pending/streaming）
+│   │       │               ├── <AnalystReply>   ← 结论文本
+│   │       │               └── <SqlPreviewGroup> ← 可折叠 SQL 预览
 │   │       └── <InputArea>
 │   │           ├── <HintChips>
 │   │           └── <InputRow>
@@ -189,41 +192,56 @@ function deriveSystemMode(datasets: DatasetState[]): SystemMode {
 
 ### 2.3 Chat Store
 
-管理对话内容、exchange 折叠状态。
+管理对话内容。采用对话式 UI（非折叠列表），每个 exchange 是一轮完整的问答。
 
 ```typescript
 interface Exchange {
   id: number
   query: string
-  userMessage: string
-  agentTrace: TraceStep[] | null   // null = 还没有 trace
-  agentReply: string | null        // null = 还在分析
+  trace: TraceStep[] | null        // null = 还没有 trace
+  reply: string | null             // null = 还在分析
+  sqlSteps: SqlStep[]              // SQL 查询步骤（可折叠展示）
   status: 'pending' | 'streaming' | 'done' | 'error'
+  error: string | null
 }
 
 interface TraceStep {
-  agent: string
-  label: string
+  agent: string                    // 统一为 "analyst"
+  label: string                    // 自然语言描述，如 "querying data · step 1"
   status: 'done' | 'active' | 'waiting'
+}
+
+interface SqlStep {
+  title: string
+  sql: string
+  tag: string
 }
 
 interface ChatStore {
   // State
   exchanges: Exchange[]
-  expandedExchangeId: number | null  // 当前展开的 exchange，null = 全部折叠
 
   // Actions
-  addExchange: (query: string) => number     // 返回新 exchange ID
+  addExchange: (query: string) => number
   updateTrace: (id: number, steps: TraceStep[]) => void
+  addSqlSteps: (id: number, steps: SqlStep[]) => void
   setReply: (id: number, reply: string) => void
   setStatus: (id: number, status: Exchange['status']) => void
+  setError: (id: number, error: string) => void
   toggleExchange: (id: number) => void
-  expandExchange: (id: number) => void       // 强制展开（jumpToChat 用）
-  scrollToExchange: (id: number) => void     // 滚动 + 高亮闪烁
+  expandExchange: (id: number) => void
 }
 ```
 
- **折叠策略** ：新 exchange 创建时自动设为 `expandedExchangeId`，其他不主动折叠。用户手动切换时更新。`jumpToChat` 调用 `expandExchange` + `scrollToExchange`。
+ **对话式 UI 渲染策略** ：所有 exchange 平铺展示，不折叠。每轮渲染为：用户气泡（右）→ analyst 头像 + thinking block + reply（左）。ThinkingBlock 在分析完成后自动折叠为一行 "✓ N steps completed"，点击可展开查看。
+
+ **视觉流转** ：
+
+1. 发送 → exchange 状态 `pending` → analyst 头像 + 绿色跳动圆点
+2. 首条 SSE progress → 状态 `streaming` → ThinkingBlock 出现，步骤逐条滑入
+3. 后续 SSE progress → trace 步骤实时更新（done/active/waiting 状态）
+4. SSE done → 状态 `done` → reply 淡入，ThinkingBlock 自动折叠（600ms 延迟）
+5. SQL 预览显示为可折叠标签 "▶ SQL · N queries"
 
 ### 2.4 Results Store
 
@@ -396,15 +414,17 @@ SSE 事件与 store action 的完整映射关系：
 ```
 SSE event         → Store action                          → UI 变化
 ─────────────────────────────────────────────────────────────────────────
-progress          → chatStore.updateTrace()                → AgentTrace 步骤更新
-result (sql)      → resultsStore.addSqlRecord()            → SQL Tab 新增条目
-result (viz)      → resultsStore.addChartRecord()          → Chart Tab 新增条目
-record            → resultsStore.addReportRecord()         → Report Tab 新增 section
-done              → chatStore.setReply() + setStatus()     → Agent bubble 出现
+progress          → chatStore.updateTrace()                → ThinkingBlock 步骤实时更新
+result (sql)      → chatStore.addSqlSteps()                → SqlPreviewGroup 数据填充
+result (viz)      → resultsStore.addChartRecord()          → Chart Tab 新增条目（Phase 4）
+record            → resultsStore.addReportRecord()         → Report Tab 新增 section（Phase 4）
+done              → chatStore.setReply() + setStatus()     → AnalystReply 淡入，ThinkingBlock 折叠
 strategy_update   → resultsStore.markOutdated()            → 旧记录打版本 tag
 quality_block     → schemaStore (TBD)                      → Schema Panel 弹出决策
-error             → chatStore.setStatus('error')           → 错误提示
+error             → chatStore.setError()                   → analyst-error 显示
 ```
+
+注意：Phase 3 中 SQL 步骤存储在 `chatStore.exchanges[].sqlSteps`，随对话展示。Phase 4 扩展后同时推送到 `resultsStore` 的 SQL Tab。
 
 ### 3.3 SSE 重连策略
 
@@ -638,39 +658,44 @@ function miniZip(files: { name: string, content: string | Uint8Array }[]): Uint8
     ▼
 InputArea.onSubmit()
     │
-    ├─→ chatStore.addExchange(query)      → Chat 新增 exchange（pending 状态）
-    │
+    ├─→ chatStore.addExchange(query)      → exchange 创建（pending 状态）
+    │                                       → analyst 头像 + 绿色跳动圆点出现
     ▼
 useAnalysisStream.submit(query, projectId)
     │
-    ├─→ SSE 连接建立
+    ├─→ SSE 连接建立（EventSource）
     │
-    ▼  progress event ×N
+    ▼  progress event（Planner 完成）
     │
-    ├─→ chatStore.updateTrace()           → AgentTrace 步骤实时更新
+    ├─→ chatStore.updateTrace()           → 跳动圆点消失，ThinkingBlock 出现
+    │                                       步骤逐条滑入（planning analysis ✓）
+    │
+    ▼  progress event ×N（SQL Agent 执行中）
+    │
+    ├─→ chatStore.updateTrace()           → ThinkingBlock 步骤实时更新
+    │                                       （querying data · step 1 ●）
     │
     ▼  result(sql) event
     │
-    ├─→ resultsStore.addSqlRecord()       → SQL Tab 新增条目（自动展开）
+    ├─→ chatStore.addSqlSteps()           → SQL 步骤数据存入 exchange
+    │                                       （完成后渲染为可折叠 SqlPreviewGroup）
     │
-    ▼  result(viz) event
+    ▼  progress event（Report Agent 完成）
     │
-    ├─→ resultsStore.addChartRecord()     → Chart Tab 新增条目（自动展开）
-    │   chartRecord 包含 altTypes + chartConfigs
-    │   前端根据 altTypes 渲染类型切换按钮
-    │
-    ▼  record event
-    │
-    ├─→ resultsStore.addReportRecord()    → Report Tab 新增 section（自动展开）
-    │   record.evidence 为 null 时不渲染 evidence toggle
+    ├─→ chatStore.updateTrace()           → ThinkingBlock 最后一步变 ✓
     │
     ▼  done event
     │
-    ├─→ chatStore.setReply()              → Agent bubble 出现
-    ├─→ chatStore.setStatus('done')       → Exchange 完成
-    │
+    ├─→ chatStore.setReply()              → ThinkingBlock 600ms 后自动折叠
+    ├─→ chatStore.setStatus('done')       → AnalystReply 淡入滑入
+    │                                       → SqlPreviewGroup 标签出现
     ▼
 SSE 连接关闭
+
+Phase 4 扩展时，在 result(sql) 和 done 之间会增加：
+    result(viz)   → resultsStore.addChartRecord()  → Chart Tab 新增
+    result(stats)  → （内部传递给 Report Agent）
+    record        → resultsStore.addReportRecord() → Report Tab 新增
 ```
 
 ---
@@ -688,19 +713,12 @@ frontend/src/
 │   │   └── ResultsPanel.tsx
 │   │
 │   ├── schema/
-│   │   ├── SchemaPanel.tsx
-│   │   ├── DatasetTabs.tsx
-│   │   ├── BlockingRow.tsx
-│   │   ├── WarningRow.tsx
-│   │   └── ConfirmWrap.tsx
+│   │   └── SchemaPanel.tsx          ← 包含 UploadZone, DatasetContent,
+│   │                                   BlockingRow (内联组件)
 │   │
 │   ├── chat/
-│   │   ├── ChatPanel.tsx
-│   │   ├── ChatExchange.tsx
-│   │   ├── AgentTrace.tsx
-│   │   ├── UserBubble.tsx
-│   │   ├── AgentBubble.tsx
-│   │   └── InputArea.tsx
+│   │   └── ChatPanel.tsx            ← 包含 ConversationTurn, ThinkingBlock,
+│   │                                   SqlPreviewGroup, HintChip (内联组件)
 │   │
 │   ├── results/
 │   │   ├── TabBar.tsx
@@ -728,15 +746,21 @@ frontend/src/
 │
 ├── stores/
 │   ├── projectStore.ts
-│   ├── schemaStore.ts
+│   ├── schemaStore.ts              ← 含 _cache 项目切换机制
 │   ├── chatStore.ts
 │   ├── resultsStore.ts
 │   └── uiStore.ts
 │
 ├── hooks/
-│   ├── useAnalysisStream.ts         ← SSE 连接管理
-│   ├── useResizer.ts                ← 拖拽调整面板宽度
-│   └── useJumpToChat.ts             ← 右侧 → 左侧联动
+│   ├── useAnalysisStream.ts         ← SSE 连接管理（EventSource）
+│   ├── useResizer.ts                ← 拖拽调整面板宽度（Phase 4）
+│   └── useJumpToChat.ts             ← 右侧 → 左侧联动（Phase 4）
+│
+├── styles/
+│   ├── globals.css                  ← CSS 变量、reset、全局动画
+│   ├── layout.css                   ← 三栏布局、sidebar、topbar、resizer
+│   ├── schema.css                   ← Schema Panel、blocking row、upload zone
+│   └── chat.css                     ← 对话气泡、ThinkingBlock、typing dots
 │
 ├── utils/
 │   ├── miniZip.ts                   ← zip 构建器（含 CRC-32）
@@ -755,10 +779,16 @@ frontend/src/
 ## 8. 关键实现备注
 
 **为什么 store 之间不直接互相引用？**
-避免循环依赖和不可预测的更新顺序。跨 store 的联动（如 confirmSchema 触发 markOutdated）通过 `useStore.getState()` 在 action 内部访问，不在 selector 层做。
+避免循环依赖和不可预测的更新顺序。跨 store 的联动（如 confirmSchema 触发 markOutdated、Sidebar 切换项目时调用 schemaStore.switchProject）通过 `useStore.getState()` 在 action 内部访问，不在 selector 层做。
 
-**为什么折叠状态用单个 ID 而不是 Set？**
-当前设计是"同时只展开一条"（最新的），用单个 `expandedId` 比 `Set<number>` 更简单。如果未来需要支持多条同时展开，改为 Set 即可，组件层的 `expanded === id` 改为 `expandedSet.has(id)`，影响范围很小。
+**为什么聊天用对话气泡而不是折叠式 exchange 列表？**
+折叠列表更像日志查看器，交互割裂——展开/折叠点击频繁，信息流不连贯。对话气泡让用户感觉在和"一个分析师"聊天：用户消息右对齐，analyst 回复左对齐（带头像），thinking 过程内联在对话流里。多轮对话自然滚动，不需要手动展开/折叠。
+
+**为什么 ThinkingBlock 完成后自动折叠？**
+thinking 步骤是过程信息，用户关心的是结论。完成后 600ms 延迟自动折叠为 "✓ 3 steps completed" 一行，让结论紧跟在用户提问下方，减少视觉干扰。但保留点击展开——需要查看执行细节时随时可以打开。
+
+**为什么 schemaStore 用 _cache 机制做项目切换？**
+用户可能在多个项目间来回切换，每次切换需要恢复对应项目的数据集状态（已上传的文件、blocking issues 的决策、confirm 状态）。`_cache: Record<projectId, ProjectSchemaState>` 在切换前保存当前状态，切换后恢复目标状态。比每次切换都重新请求后端快得多，也避免了重复上传。
 
 **为什么 ChartRecord 存 chartConfigs 而不是只存 data？**
 Viz Agent 返回的是各类型对应的 Plotly 配置（已经是可渲染的配置），前端只需要根据 activeType 选择对应的 config 传给 `<Plot>`。如果只存 data，前端还需要自己组装 Plotly 配置，逻辑重复且容易和 agent 输出不一致。

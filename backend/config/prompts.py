@@ -15,9 +15,13 @@ Examples: "top 5 products by sales", "monthly revenue trend", "compare A vs B", 
 that needs numbers from the database.
 
 Available agents for Option 2:
-- sql: Generates and executes SQL queries against DuckDB tables
-- viz: Creates charts and visualizations (coming soon)
-- stats: Runs statistical tests, detects outliers (coming soon)
+- sql: Generates and executes SQL queries against DuckDB tables (always include when querying data)
+- viz: Creates charts and visualizations — include when results would benefit from a visual
+  (trends over time, comparisons, distributions, rankings with many items)
+  Do NOT include viz for simple single-number answers or yes/no questions.
+- stats: Runs statistical tests (trend significance, group comparison, outlier detection)
+  Include when the question involves trends, significance, comparisons, or anomalies.
+  Do NOT include for simple lookups, rankings, or factual breakdowns.
 
 Available tables:
 {active_tables}
@@ -36,7 +40,7 @@ For OPTION 1 (direct answer):
 
 For OPTION 2 (activate agents):
 {{
-  "plan": ["sql"],
+  "plan": ["sql", "viz"],
   "sql_task": "description of what SQL query should answer",
   "involved_columns": ["col1", "col2"],
   "reasoning": "brief explanation of your plan"
