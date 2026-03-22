@@ -1,8 +1,10 @@
-"""API routes — Phase 2: dataset upload, decisions, confirm."""
+"""API routes — Phase 2 + Phase 3: dataset upload, decisions, confirm, analyze."""
 
 import uuid
 import os
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from sse_starlette.sse import EventSourceResponse
 from backend.api.schemas import (
     ApiResponse, ApiError,
     DatasetUploadResponse, ColumnSchema, BlockingIssueSchema,
@@ -291,3 +293,68 @@ async def get_schema(project_id: str):
         "strategy_version": project["strategy_version"],
         "system_mode": "chat" if all(d["confirmed"] for d in project["datasets"].values()) else "clean",
     })
+
+# ══════════════════════════════════════
+# GET /api/analyze/stream — SSE analysis stream
+# ══════════════════════════════════════
+
+@router.get("/analyze/stream")
+async def analyze_stream(
+    project_id: str = Query(...),
+    query: str = Query(...),
+):
+    """Run analysis pipeline and stream results via SSE."""
+    project = _get_project(project_id)
+
+    # Validate project has confirmed datasets
+    if not project["datasets"]:
+        raise HTTPException(400, detail={
+            "ok": False,
+            "error": {"code": "VALIDATION_ERROR", "message": "No datasets uploaded"}
+        })
+
+    unconfirmed = [
+        ds["name"] for ds in project["datasets"].values()
+        if not ds.get("confirmed")
+    ]
+    if unconfirmed:
+        raise HTTPException(400, detail={
+            "ok": False,
+            "error": {
+                "code": "BLOCKING_UNRESOLVED",
+                "message": f"Unconfirmed datasets: {', '.join(unconfirmed)}",
+            }
+        })
+
+    # Build active_tables context for agents
+    active_tables = []
+    quality_notes = []
+
+    for ds_id, ds in project["datasets"].items():
+        table_name = ds.get("table_name", ds["name"].rsplit(".", 1)[0])
+        columns = [inf.column for inf in ds["inferences"] if inf.decision != "ask_user" or inf.column in ds["decisions"]]
+        excluded = [inf.column for inf in ds["inferences"] if ds["decisions"].get(inf.column) == "exclude"]
+        columns = [c for c in columns if c not in excluded]
+
+        active_tables.append({
+            "name": table_name,
+            "columns": columns,
+            "row_count": len(ds["df"]),
+        })
+
+        # Build quality notes from decisions
+        for col, option in ds["decisions"].items():
+            inf = next((i for i in ds["inferences"] if i.column == col), None)
+            if inf and option != "exclude":
+                quality_notes.append(f"{col}: non-{inf.inferred_type} values → {option}")
+
+    from backend.api.sse import run_analysis_stream
+
+    return EventSourceResponse(
+        run_analysis_stream(
+            project_id=project_id,
+            query=query,
+            active_tables=active_tables,
+            quality_notes=quality_notes,
+        )
+    )
