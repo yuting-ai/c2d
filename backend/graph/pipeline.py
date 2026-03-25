@@ -21,12 +21,21 @@ def route_after_planner(state: AgentState) -> str:
 
 
 def route_after_sql(state: AgentState) -> str:
-    """SQL → Viz (if planned and data available) or next stage."""
+    """SQL → Viz (if planned and data available) or next stage.
+
+    On critic retry: skip Viz/Stats, go straight to Critic to re-validate
+    the corrected SQL without wasting time regenerating charts.
+    """
     plan = state.get("plan", [])
     sql_result = state.get("sql_result", {})
+    retry_count = state.get("retry_count", 0)
 
     if sql_result.get("error") or not sql_result.get("final_rows"):
         return "report"  # Skip Viz/Stats/Critic, go straight to Report for error handling
+
+    # On retry: go straight to Critic to validate the fix (skip Viz/Stats)
+    if retry_count > 0:
+        return "critic"
 
     if "viz" in plan:
         return "viz_agent"
@@ -36,17 +45,34 @@ def route_after_sql(state: AgentState) -> str:
 
 
 def route_after_viz(state: AgentState) -> str:
-    """Viz → Stats (if planned) or Critic."""
+    """Viz → Stats (if planned) or Critic.
+
+    If critic already passed (retry flow), go straight to Report.
+    """
     plan = state.get("plan", [])
+
+    # If critic already passed, we're in the post-retry viz fill-in — go to report
+    if state.get("critic_verdict") == "pass":
+        return "report"
+
     if "stats" in plan:
         return "stats_agent"
     return "critic"
 
 
 def route_after_critic(state: AgentState) -> str:
-    """Critic → Report (pass) or retry target (retry)."""
+    """Critic → Report (pass), Viz (if skipped on retry), or retry target.
+
+    When critic passes after a retry, we may have skipped Viz/Stats.
+    If plan includes viz but viz_result is missing, route to viz_agent.
+    """
     verdict = state.get("critic_verdict", "pass")
+    plan = state.get("plan", [])
+
     if verdict == "pass":
+        # After retry pass: check if we skipped Viz and need to run it now
+        if "viz" in plan and not state.get("viz_result"):
+            return "viz_agent"
         return "report"
 
     target = state.get("retry_target", "sql")

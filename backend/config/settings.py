@@ -5,12 +5,16 @@ from pathlib import Path
 
 
 class Settings(BaseSettings):
-    # ── LLM Provider ──
+    # ── LLM Provider ("deepseek" | "ollama" | "anthropic") ──
     LLM_PROVIDER: str = "deepseek"
     LLM_MODEL: str = "deepseek-chat"
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
     ANTHROPIC_API_KEY: str = ""
+
+    # ── Local Ollama ──
+    OLLAMA_BASE_URL: str = "http://localhost:11434/v1"
+    OLLAMA_MODEL: str = "qwen2.5-coder:7b"
 
     # ── Embedding ──
     EMBEDDING_PROVIDER: str = "local"

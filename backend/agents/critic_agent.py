@@ -3,7 +3,8 @@
 import json
 import logging
 from langchain_core.messages import SystemMessage, HumanMessage
-from backend.agents.base import get_llm
+from backend.agents.base import get_llm, no_think
+from backend.agents.json_utils import extract_json
 from backend.graph.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -53,8 +54,8 @@ async def critic_agent(state: AgentState) -> dict:
 
     retry_count = state.get("retry_count", 0)
 
-    # Force pass after max retries
-    if retry_count >= 2:
+    # Force pass after max retries (1 retry max — small models rarely self-correct beyond that)
+    if retry_count >= 1:
         logger.info("Critic: max retries reached, forcing pass")
         return {
             "critic_verdict": "pass",
@@ -84,6 +85,11 @@ async def critic_agent(state: AgentState) -> dict:
 
     quality_notes = "\n".join(state.get("quality_notes", [])) or "None"
 
+    # Include programmatic quality warnings from SQL agent
+    sql_quality_warning = sql_result.get("quality_warning")
+    if sql_quality_warning:
+        quality_notes += f"\n⚠️ SQL self-check warning: {sql_quality_warning}"
+
     prompt = CRITIC_SYSTEM.format(
         user_query=state["user_query"],
         sql_summary=sql_summary,
@@ -98,19 +104,15 @@ async def critic_agent(state: AgentState) -> dict:
 
     llm = get_llm(temperature=0)
     response = await llm.ainvoke([
-        SystemMessage(content=prompt),
+        SystemMessage(content=prompt),   # Critic keeps thinking — needs to reason about SQL correctness
         HumanMessage(content="Review the analysis now."),
     ])
 
     text = response.content.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        text = "\n".join(lines).strip()
+    logger.info(f"Critic raw output: {text[:300]}")
 
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
+    parsed = extract_json(text)
+    if parsed is None:
         logger.warning(f"Failed to parse critic output, defaulting to pass: {text[:200]}")
         parsed = {"verdict": "pass", "feedback": "Could not parse review, passing by default"}
 
@@ -119,7 +121,7 @@ async def critic_agent(state: AgentState) -> dict:
     target = parsed.get("target", "sql")
     notes = parsed.get("transparency_notes", [])
 
-    logger.info(f"Critic: verdict={verdict}, feedback={feedback[:80]}")
+    logger.info(f"Critic: verdict={verdict}, feedback={feedback[:300]}")
 
     done_event = _progress_event(state, "reviewing results", "done")
 

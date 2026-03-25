@@ -2,8 +2,9 @@
 
 import json
 import logging
-from langchain_core.messages import SystemMessage, HumanMessage
-from backend.agents.base import get_llm
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from backend.agents.base import get_llm, no_think
+from backend.agents.json_utils import extract_json
 from backend.graph.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -91,22 +92,32 @@ async def viz_agent(state: AgentState) -> dict:
     }
 
     llm = get_llm(temperature=0)
-    response = await llm.ainvoke([
-        SystemMessage(content=prompt),
-        HumanMessage(content="Generate the chart data now."),
-    ])
 
-    text = response.content.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        text = "\n".join(lines).strip()
+    messages = [
+        SystemMessage(content=no_think(prompt)),
+        HumanMessage(content="Generate the chart data now. Output ONLY valid JSON, no explanation."),
+    ]
 
-    try:
-        chart_data = json.loads(text)
-    except json.JSONDecodeError:
-        logger.warning(f"Failed to parse viz output: {text[:200]}")
-        chart_data = None
+    chart_data = None
+
+    # Try up to 2 times (initial + 1 retry for small models)
+    for attempt in range(2):
+        response = await llm.ainvoke(messages)
+        text = response.content.strip()
+        logger.info(f"Viz Agent attempt {attempt + 1}, raw output: {text[:300]}")
+
+        chart_data = extract_json(text)
+        if chart_data and chart_data.get("series"):
+            break
+
+        # Retry with stronger hint
+        if attempt == 0:
+            logger.warning(f"Viz Agent: failed to parse chart data, retrying with hint")
+            messages.append(AIMessage(content=text))
+            messages.append(HumanMessage(
+                content='Your output was not valid JSON. Output ONLY a JSON object with keys: "type", "alt_types", "title", "x_label", "y_label", "series". No markdown fences, no explanation.'
+            ))
+            chart_data = None
 
     if not chart_data:
         return {

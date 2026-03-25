@@ -3,7 +3,7 @@
 import json
 import logging
 from langchain_core.messages import SystemMessage, HumanMessage
-from backend.agents.base import get_llm
+from backend.agents.base import get_llm, no_think
 from backend.graph.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -98,7 +98,7 @@ async def report_agent(state: AgentState) -> dict:
 
     llm = get_llm(temperature=0.1)
     response = await llm.ainvoke([
-        SystemMessage(content=prompt),
+        SystemMessage(content=no_think(prompt)),
         HumanMessage(content="Write your conclusion now."),
     ])
 

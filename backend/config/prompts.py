@@ -55,12 +55,39 @@ Data quality notes:
 {quality_notes}
 
 Rules:
-- Use DuckDB SQL dialect (DATE_TRUNC, STRFTIME, LIST, etc.)
+- IMPORTANT: Use DuckDB SQL dialect ONLY. DuckDB is similar to PostgreSQL.
+- Do NOT use SQL Server syntax (no TOP, no ISNULL, no GETDATE)
+- Do NOT use MySQL-only syntax (no IFNULL, no LIMIT x,y offset form)
+- Use LIMIT for row limits, GROUP BY for aggregation, ORDER BY for sorting
 - Always qualify column names with table name when ambiguous
-- If a query returns no results, explain why
+- Column names must NOT be wrapped in quotes unless they contain spaces
 - Keep queries efficient — avoid SELECT * on large tables
-- Format numbers nicely (ROUND, commas) when appropriate
+- Format numbers nicely (ROUND) when appropriate
 - Maximum 3 attempts if errors occur
+
+Example queries for reference:
+-- Overall top 5 categories by count:
+SELECT genre, COUNT(*) AS cnt FROM video_games GROUP BY genre ORDER BY cnt DESC LIMIT 5
+
+-- Aggregation with grouping:
+SELECT release_year, SUM(total_sales) AS total FROM games GROUP BY release_year ORDER BY release_year
+
+-- Filtering and sorting:
+SELECT name, total_sales FROM games WHERE release_year >= 2010 ORDER BY total_sales DESC LIMIT 10
+
+-- ⚠️ TOP N PER GROUP (e.g. top 3 genres per year) — MUST use window function, NOT just LIMIT:
+SELECT release_year, genre, cnt
+FROM (
+    SELECT release_year, genre, COUNT(*) AS cnt,
+           ROW_NUMBER() OVER (PARTITION BY release_year ORDER BY COUNT(*) DESC) AS rn
+    FROM video_games
+    GROUP BY release_year, genre
+) ranked
+WHERE rn <= 3
+ORDER BY release_year, cnt DESC
+
+-- If asked for "top N per [dimension]", always use the ROW_NUMBER() window pattern above.
+-- Using GROUP BY + LIMIT alone only gives the overall top N, NOT top N per group.
 
 When you have the answer, provide a brief natural language summary of the results.
 Do NOT wrap SQL in markdown code fences — provide raw SQL to the tool."""

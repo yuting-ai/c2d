@@ -18,6 +18,7 @@ from backend.db.loader import (
 )
 from backend.db.engine import engine
 from backend.config.settings import settings
+from backend.agents.base import set_provider, get_current_provider
 
 router = APIRouter(prefix="/api")
 
@@ -358,3 +359,38 @@ async def analyze_stream(
             quality_notes=quality_notes,
         )
     )
+
+
+# ══════════════════════════════════════
+# LLM provider switch (runtime, no restart needed)
+# ══════════════════════════════════════
+
+@router.get("/llm/status")
+async def llm_status():
+    """Return current LLM provider and model."""
+    info = get_current_provider()
+    return ApiResponse(data=info)
+
+
+@router.put("/llm/provider")
+async def switch_llm_provider(
+    provider: str = Query(..., description="deepseek | ollama | anthropic"),
+    model: str = Query(None, description="Override model name (optional)"),
+):
+    """Switch LLM provider at runtime. Takes effect immediately for new requests."""
+    allowed = {"deepseek", "ollama", "anthropic"}
+    if provider not in allowed:
+        raise HTTPException(400, detail={
+            "ok": False,
+            "error": {
+                "code": "VALIDATION_ERROR",
+                "message": f"Unknown provider '{provider}'. Allowed: {', '.join(sorted(allowed))}",
+            }
+        })
+
+    set_provider(provider, model)
+    info = get_current_provider()
+    return ApiResponse(data={
+        "switched": True,
+        **info,
+    })

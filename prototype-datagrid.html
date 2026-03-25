@@ -1,0 +1,2243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>c2d analyst — v4</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg0:#09090b;--bg1:#0d0d10;--bg2:#111318;--bg3:#161820;
+  --border:#1f2128;--border2:#272a33;
+  --text1:#e4e5e8;--text2:#8a8c94;--text3:#4a4d58;
+  --green:#3effa0;--gdim:#1a3d2c;--gbrd:#1f4d35;
+  --amber:#f0a83a;--adim:#2a1f08;--abrd:#3d2e0a;
+  --purple:#a57ef5;--pdim:#1e1535;--pbrd:#2e1f55;
+  --red:#f05a5a;--rdim:#2a0f0f;--rbrd:#4d1f1f;
+  --blue:#3a9ff5;--bdim:#0f1f33;--bbrd:#1a3355;
+  --mono:'IBM Plex Mono','SF Mono',monospace;
+  --sans:'DM Sans','Inter',system-ui,sans-serif;
+  --sidebar-w:72px;
+}
+html,body{height:100%;background:var(--bg0);overflow:hidden;}
+body{font-family:var(--sans);color:var(--text2);}
+::-webkit-scrollbar{width:3px;height:3px;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideInLeft{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideInRight{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes scaleIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+@keyframes shrinkFly{0%{transform:scale(1);opacity:1}60%{transform:scale(.3);opacity:.6}100%{transform:scale(0) translateX(-200px);opacity:0}}
+@keyframes gridReveal{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* ══ SHELL ══ */
+#app{display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+
+/* ══ TOPBAR ══ */
+.topbar{
+  height:50px;min-height:50px;flex-shrink:0;
+  background:var(--bg1);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 16px 0 0;gap:0;z-index:10;
+}
+/* logo slot aligned with sidebar */
+.topbar-logo{
+  width:var(--sidebar-w);min-width:var(--sidebar-w);
+  display:flex;align-items:center;justify-content:center;
+  border-right:1px solid var(--border);height:100%;flex-shrink:0;
+}
+.logo{font-family:var(--mono);font-size:11.5px;font-weight:600;color:var(--text1);letter-spacing:0.5px;}
+.logo em{color:var(--green);font-style:normal;}
+.topbar-main{flex:1;display:flex;align-items:center;gap:12px;padding:0 16px;}
+.ds-chips{display:flex;gap:6px;align-items:center;flex:1;overflow:hidden;}
+.ds-chip{
+  display:flex;align-items:center;gap:6px;padding:4px 6px 4px 8px;
+  border-radius:6px;border:1px solid var(--green);background:var(--gdim);
+  font-family:var(--mono);font-size:11px;flex-shrink:0;cursor:default;
+  transition:border-color .15s;position:relative;
+}
+
+.ds-toggle{width:22px;height:12px;border-radius:6px;background:var(--green);position:relative;}
+.ds-dot{position:absolute;top:1.5px;left:11px;width:9px;height:9px;border-radius:50%;background:#0a1a13;}
+.add-btn{font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:6px;border:1px dashed var(--border2);background:none;color:var(--text3);cursor:pointer;transition:all .15s;white-space:nowrap;}
+.add-btn:hover{border-color:var(--green);color:var(--green);}
+.topbar-right{display:flex;align-items:center;gap:12px;}
+.agent-badge{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--green);}
+.pulse-dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s ease-in-out infinite;}
+
+/* ══ BODY ROW ══ */
+.body-row{display:flex;flex:1;overflow:hidden;min-height:0;}
+
+/* ══ RIGHT ICON SIDEBAR ══ */
+.icon-sidebar{
+  width:var(--sidebar-w);min-width:var(--sidebar-w);flex-shrink:0;
+  background:var(--bg1);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;
+  padding:8px 0;gap:4px;z-index:10;
+  order:100; /* push to end of body-row flex */
+}
+.sb-icon{
+  width:34px;height:34px;border-radius:8px;
+  border:1px solid transparent;background:none;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:15px;transition:all .15s;
+  position:relative;
+}
+.sb-icon:hover{background:var(--bg3);border-color:var(--border2);}
+.sb-icon.active{background:var(--gdim);border-color:var(--gbrd);}
+.sb-icon .badge{
+  position:absolute;top:3px;right:3px;
+  width:7px;height:7px;border-radius:50%;
+  background:var(--amber);border:1.5px solid var(--bg1);
+}
+.sb-icon .badge.green{background:var(--green);}
+.sb-divider{width:24px;height:1px;background:var(--border);margin:4px 0;}
+.sb-icon .tooltip{
+  position:absolute;right:calc(100% + 10px);top:50%;transform:translateY(-50%);
+  background:var(--bg2);border:1px solid var(--border2);border-radius:6px;
+  padding:4px 10px;font-family:var(--mono);font-size:10px;color:var(--text1);
+  white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s;z-index:50;
+}
+.sb-icon:hover .tooltip{opacity:1;}
+
+/* ══ MAIN AREA ══ */
+.main-area{display:flex;flex:1;overflow:hidden;min-width:0;}
+
+/* ── DataGrid column ── */
+.datagrid-col{display:flex;flex-direction:column;overflow:hidden;min-width:360px;flex:1;}
+
+/* context toolbar */
+.ctx-bar{
+  height:40px;min-height:40px;flex-shrink:0;
+  background:var(--bg1);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 14px;gap:7px;
+}
+.ctx-tag{font-family:var(--mono);font-size:10px;color:var(--green);background:var(--gdim);border:1px solid var(--gbrd);padding:2px 7px;border-radius:4px;}
+.ctx-lbl{font-family:var(--mono);font-size:10px;color:var(--text3);}
+.ctx-sep{width:1px;height:16px;background:var(--border);margin:0 2px;}
+.cbtn{font-family:var(--mono);font-size:10px;padding:4px 9px;border-radius:5px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:4px;}
+.cbtn:hover{border-color:var(--green);color:var(--green);background:var(--gdim);}
+.cbtn.p:hover{border-color:var(--purple);color:var(--purple);background:var(--pdim);}
+.cbtn.a:hover{border-color:var(--amber);color:var(--amber);background:var(--adim);}
+.ctx-spacer{flex:1;}
+.ctx-hint{font-family:var(--mono);font-size:9px;color:var(--text3);opacity:.6;}
+
+/* datagrid */
+.grid-wrap{flex:1;overflow:auto;min-height:0;}
+.grid{width:max-content;min-width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11.5px;}
+.grid th{position:sticky;top:0;z-index:5;background:var(--bg2);padding:0;border-bottom:1px solid var(--border);font-weight:500;text-align:left;user-select:none;}
+.th-in{display:flex;align-items:center;gap:6px;padding:8px 14px;cursor:pointer;transition:background .12s;min-width:120px;}
+.th-in:hover{background:var(--bg3);}
+.th-nm{color:var(--text2);white-space:nowrap;}
+.th-tp{font-size:9px;color:var(--text3);padding:1px 5px;border-radius:3px;background:var(--bg0);border:1px solid var(--border);}
+.th-so{font-size:8px;color:var(--text3);margin-left:auto;opacity:0;transition:opacity .12s;}
+.th-in:hover .th-so{opacity:1;}
+.th-in.sorted .th-so{opacity:1;color:var(--green);}
+.th-in.sel{background:rgba(62,255,160,.06);}
+.th-in.sel .th-nm{color:var(--green);}
+.grid .rn{position:sticky;left:0;z-index:3;background:var(--bg2);color:var(--text3);font-size:10px;padding:6px 10px;text-align:right;min-width:46px;border-right:1px solid var(--border);user-select:none;}
+.grid th.rnh{position:sticky;left:0;top:0;z-index:6;background:var(--bg2);min-width:46px;border-right:1px solid var(--border);}
+.grid td{padding:5px 14px;border-bottom:1px solid var(--border);color:var(--text2);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;transition:background .06s;}
+.grid tr:hover td{background:var(--bg2);}
+.grid td.num{color:var(--green);text-align:right;}
+.grid td.dt{color:var(--blue);}
+.grid td.nul{color:var(--text3);font-style:italic;}
+.grid td.sel{background:rgba(62,255,160,.03);}
+
+/* footer stats */
+.footer{height:27px;min-height:27px;flex-shrink:0;background:var(--bg2);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:14px;font-family:var(--mono);font-size:10px;color:var(--text3);}
+.fv{color:var(--text2);margin-left:3px;}
+.fv.g{color:var(--green);}
+
+/* ── SCHEMA FIRST-LOAD (shown in main datagrid area) ── */
+.schema-firstload{
+  flex:1;display:flex;flex-direction:column;overflow:hidden;
+  animation:gridReveal .35s ease-out;
+}
+.sf-header{
+  padding:20px 24px 12px;flex-shrink:0;
+  border-bottom:1px solid var(--border);background:var(--bg1);
+}
+.sf-title{font-family:var(--mono);font-size:15px;color:var(--text1);margin-bottom:4px;}
+.sf-sub{font-family:var(--mono);font-size:11px;color:var(--text3);}
+.sf-progress{display:flex;align-items:center;gap:10px;margin-top:12px;}
+.sf-prog-step{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;}
+.sf-prog-dot{width:8px;height:8px;border-radius:50%;background:var(--border2);}
+.sf-prog-dot.done{background:var(--green);}
+.sf-prog-dot.active{background:var(--amber);animation:pulse 1.2s infinite;}
+.sf-prog-arrow{color:var(--text3);font-size:10px;}
+.sf-body{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:14px;}
+.sf-section-label{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;display:flex;align-items:center;gap:7px;}
+.sf-section-label.warn{color:var(--red);}
+.sf-section-label.ok{color:var(--green);}
+.sf-section-label.info{color:var(--amber);}
+
+/* blocking issue card */
+.bi-card{border-radius:8px;border:1px solid var(--rbrd);background:var(--rdim);padding:12px 14px;display:flex;flex-direction:column;gap:8px;}
+.bi-card.resolved{border-color:var(--gbrd);background:var(--gdim);}
+.bi-head{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11.5px;}
+.bi-col{color:var(--text1);}
+.bi-badge{font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid var(--rbrd);color:var(--red);}
+.bi-card.resolved .bi-badge{border-color:var(--gbrd);color:var(--green);}
+.bi-desc{font-size:12px;color:var(--text2);line-height:1.5;}
+.bi-samples{font-family:var(--mono);font-size:10.5px;color:var(--text3);}
+.s-ok{color:var(--green);}
+.s-bad{color:var(--red);}
+.opts{display:flex;gap:6px;flex-wrap:wrap;}
+.opt{font-family:var(--mono);font-size:10.5px;padding:6px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;transition:all .15s;}
+.opt:hover{border-color:var(--green);color:var(--green);background:var(--gdim);}
+.opt.on{border-color:var(--green);color:var(--green);background:var(--gdim);}
+
+/* auto-converted row */
+.auto-row{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;padding:4px 0;}
+.auto-check{color:var(--green);font-size:10px;}
+.auto-col{color:var(--text1);}
+.auto-arr{color:var(--text3);font-size:10px;}
+.auto-to{color:var(--green);}
+
+/* warn row */
+.warn-row{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;padding:4px 0;}
+
+/* confirm button */
+.sf-footer{padding:14px 24px;border-top:1px solid var(--border);background:var(--bg1);flex-shrink:0;display:flex;align-items:center;gap:12px;}
+.sf-status{font-family:var(--mono);font-size:11px;color:var(--text3);flex:1;}
+.sf-status.ready{color:var(--green);}
+.confirm-btn{padding:10px 22px;background:var(--green);border:none;border-radius:8px;font-family:var(--mono);font-size:12px;color:#060f09;cursor:pointer;font-weight:600;transition:opacity .15s;}
+.confirm-btn:hover{opacity:.87;}
+.confirm-btn:disabled{opacity:.35;cursor:not-allowed;}
+
+/* ── Claude-style chat composer ── */
+.chat-composer{
+  flex-shrink:0;border-top:1px solid var(--border);background:var(--bg1);
+  padding:10px 14px;display:flex;flex-direction:column;gap:8px;
+}
+/* last analyst reply card (above composer) */
+.reply-card{
+  background:var(--bg2);border:1px solid var(--border2);border-radius:10px;
+  padding:10px 13px;display:flex;gap:8px;align-items:flex-start;
+  animation:slideUp .2s ease-out;
+}
+.reply-avatar{width:22px;height:22px;border-radius:5px;flex-shrink:0;margin-top:1px;background:var(--gdim);border:1px solid var(--gbrd);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:9px;color:var(--green);}
+.reply-text{font-size:12.5px;color:var(--text1);line-height:1.55;flex:1;}
+.reply-close{color:var(--text3);cursor:pointer;font-size:12px;transition:color .12s;margin-left:4px;flex-shrink:0;}
+.reply-close:hover{color:var(--text1);}
+/* composer input row */
+.composer-row{
+  display:flex;align-items:flex-end;gap:8px;
+  background:var(--bg3);border:1px solid var(--border2);border-radius:12px;
+  padding:10px 12px;transition:border-color .15s;
+}
+.composer-row:focus-within{border-color:var(--green);}
+.composer-textarea{
+  flex:1;background:none;border:none;outline:none;
+  font-family:var(--sans);font-size:13px;color:var(--text1);
+  resize:none;min-height:22px;max-height:180px;line-height:1.5;
+  overflow-y:auto;
+}
+.composer-textarea::placeholder{color:var(--text3);}
+.composer-actions{display:flex;align-items:center;gap:6px;flex-shrink:0;}
+.hist-btn{font-family:var(--mono);font-size:10px;padding:4px 9px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text3);cursor:pointer;transition:all .15s;}
+.hist-btn:hover{border-color:var(--green);color:var(--green);}
+.send-btn{width:30px;height:30px;border-radius:8px;background:var(--green);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .15s,transform .1s;}
+.send-btn:hover{opacity:.85;transform:scale(.97);}
+.send-btn svg{width:13px;height:13px;fill:none;stroke:#060f09;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+/* hint chips */
+.hints{display:flex;gap:5px;flex-wrap:wrap;}
+.hint{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:16px;border:1px solid var(--border2);background:var(--bg0);color:var(--text3);cursor:pointer;transition:all .15s;}
+.hint:hover{border-color:var(--green);color:var(--green);}
+
+/* ── Results Panel ── */
+.results-panel{display:flex;flex-direction:column;overflow:hidden;background:var(--bg0);min-width:260px;flex-shrink:0;}
+.res-tabs{display:flex;border-bottom:1px solid var(--border);padding:0 12px;flex-shrink:0;}
+.res-tab{padding:13px 14px 12px;font-family:var(--mono);font-size:11.5px;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s;white-space:nowrap;user-select:none;}
+.res-tab:hover{color:var(--text2);}
+.res-tab.on{color:var(--green);border-bottom-color:var(--green);}
+.res-tab .cnt{font-family:var(--mono);font-size:9px;color:var(--green);margin-left:4px;}
+.res-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;}
+
+/* ── Source sub-filter bar ── */
+.src-filter-bar{display:flex;align-items:center;gap:4px;padding:0 0 6px;flex-shrink:0;}
+.src-btn{font-family:var(--mono);font-size:10px;padding:3px 9px;border-radius:12px;border:1px solid transparent;background:none;color:var(--text3);cursor:pointer;transition:all .12s;white-space:nowrap;}
+.src-btn:hover{background:var(--bg2);color:var(--text2);}
+.src-btn.on{background:var(--bg2);border-color:var(--border2);color:var(--text1);}
+/* small source origin badge on card/entry headers */
+.src-badge-chat{font-family:var(--mono);font-size:9px;padding:1px 6px;border-radius:3px;background:var(--gdim);border:1px solid var(--gbrd);color:var(--green);}
+.src-badge-grid{font-family:var(--mono);font-size:9px;padding:1px 6px;border-radius:3px;background:var(--bdim);border:1px solid var(--bbrd);color:var(--blue);}
+
+/* ── Schema table ── */
+.ds-block{border-radius:8px;border:1px solid var(--border);overflow:hidden;}
+.ds-head{padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;}
+.ds-name{font-family:var(--mono);font-size:12px;color:var(--green);font-weight:500;}
+.ds-meta{font-family:var(--mono);font-size:10px;color:var(--text3);}
+.ds-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;}
+.ds-table th{padding:6px 14px;text-align:left;background:var(--bg1);color:var(--text3);border-bottom:1px solid var(--border);font-weight:500;font-size:10px;position:sticky;top:0;}
+.ds-table td{padding:5px 14px;border-bottom:1px solid var(--border);color:var(--text2);white-space:nowrap;}
+.ds-table tr:last-child td{border-bottom:none;}
+.type-badge{font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:var(--bg3);border:1px solid var(--border2);color:var(--text3);}
+.type-badge.conv{background:var(--gdim);border-color:var(--gbrd);color:var(--green);}
+.null-bar{display:inline-flex;align-items:center;gap:5px;}
+.nb-track{width:40px;height:4px;border-radius:2px;background:var(--bg3);position:relative;display:inline-block;}
+.nb-fill2{position:absolute;left:0;top:0;height:4px;border-radius:2px;}
+.nb-pct{font-family:var(--mono);font-size:9px;min-width:32px;}
+.ds-block .ds-chips{padding:8px 14px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:5px;}
+.conv-chip{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:3px;background:var(--gdim);border:1px solid var(--gbrd);color:var(--green);}
+.warn-chip{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:3px;background:var(--adim);border:1px solid var(--abrd);color:var(--amber);}
+
+/* ── Placeholder ── */
+.placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:40px 24px;text-align:center;flex:1;opacity:.6;}
+.placeholder-icon{font-size:28px;}
+.placeholder-title{font-family:var(--mono);font-size:12px;color:var(--text2);}
+.placeholder-desc{font-family:var(--mono);font-size:11px;color:var(--text3);line-height:1.7;max-width:240px;}
+.tab-pane{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
+
+/* ── Chart tab enhancements ── */
+.chart-toolbar{display:flex;gap:4px;margin-bottom:9px;align-items:center;}
+.chart-dl{font-family:var(--mono);font-size:9px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer;transition:all .12s;}
+.chart-dl:hover{border-color:var(--text3);color:var(--text2);}
+.chart-area{width:100%;height:160px;background:var(--bg0);border:1px solid var(--border);border-radius:6px;display:flex;align-items:flex-end;padding:14px 14px 26px;gap:5px;position:relative;margin-bottom:4px;}
+.chart-bar{border-radius:3px 3px 0 0;flex:1;cursor:pointer;transition:opacity .15s;}
+.chart-bar:hover{opacity:.75;}
+.chart-xaxis{position:absolute;bottom:7px;left:14px;right:14px;display:flex;justify-content:space-around;}
+.chart-xl{font-family:var(--mono);font-size:8px;color:var(--text3);}
+
+/* ── SQL tab ── */
+.sql-entry{border-radius:7px;border:1px solid var(--border);overflow:hidden;background:transparent;transition:all .2s;}
+.sql-entry.open{border-color:var(--border2);background:var(--bg1);}
+.sql-entry-head{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;transition:background .12s;}
+.sql-entry-head:hover{background:var(--bg2);}
+.sql-tag{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid var(--border2);color:var(--text3);}
+.sql-tag.s{border-color:var(--gbrd);color:var(--green);background:var(--gdim);}
+.sql-tag.a{border-color:var(--abrd);color:var(--amber);background:var(--adim);}
+.sql-tag.p{border-color:var(--pbrd);color:var(--purple);background:var(--pdim);}
+.sql-body{padding:0 12px 12px;display:flex;flex-direction:column;gap:8px;}
+.sql-pre{font-family:var(--mono);font-size:10.5px;color:var(--text2);background:var(--bg0);border:1px solid var(--border);border-radius:6px;padding:9px 12px;line-height:1.55;white-space:pre-wrap;word-break:break-all;max-height:180px;overflow-y:auto;margin:0;}
+.sql-step{border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--bg2);}
+.sql-step-hd{display:flex;align-items:center;justify-content:space-between;padding:4px 10px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:9px;color:var(--text3);}
+.sql-step .sql-pre{border:none;border-radius:0;background:var(--bg0);}
+.sql-foot{display:flex;gap:6px;align-items:center;}
+.sql-copy{font-family:var(--mono);font-size:9px;padding:3px 9px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer;transition:all .12s;}
+.sql-copy:hover{border-color:var(--green);color:var(--green);}
+.sql-rows{font-family:var(--mono);font-size:9px;color:var(--text3);margin-left:auto;}
+
+/* ── Report tab ── */
+.rpt-header{display:flex;align-items:flex-start;gap:10px;padding:12px 14px 10px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg0);}
+.rpt-title{font-family:var(--mono);font-size:12.5px;color:var(--text1);flex:1;font-weight:500;}
+.rpt-meta{font-family:var(--mono);font-size:9px;color:var(--text3);margin-top:3px;}
+.rpt-dl{font-family:var(--mono);font-size:9.5px;padding:4px 10px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer;transition:all .12s;white-space:nowrap;}
+.rpt-dl:hover{border-color:var(--green);color:var(--green);}
+.rpt-sections{flex:1;overflow-y:auto;}
+.rpt-section{border-bottom:1px solid var(--border);}
+.rpt-sec-head{display:flex;align-items:center;gap:7px;padding:10px 14px;cursor:pointer;transition:background .12s;}
+.rpt-sec-head:hover{background:var(--bg2);}
+.rpt-num{font-family:var(--mono);font-size:10px;color:var(--text3);}
+.rpt-sec-title{font-family:var(--mono);font-size:11.5px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rpt-sec-head.open .rpt-sec-title{color:var(--text1);}
+.rpt-time{font-family:var(--mono);font-size:9px;color:var(--text3);}
+.rpt-star{background:none;border:none;cursor:pointer;font-size:12px;color:var(--text3);padding:0 2px;transition:color .12s;}
+.rpt-star:hover,.rpt-star.on{color:var(--amber);}
+.rpt-arr{font-size:8px;color:var(--text3);transition:transform .2s;flex-shrink:0;}
+.rpt-sec-head.open .rpt-arr{transform:rotate(90deg);}
+.rpt-body{padding:0 14px 14px;display:flex;flex-direction:column;gap:10px;}
+/* mini chart in report */
+.rpt-mini-chart{width:100%;height:130px;background:var(--bg0);border:1px solid var(--border);border-radius:6px;display:flex;align-items:flex-end;padding:10px 12px 22px;gap:4px;position:relative;}
+.rpt-mini-bar{border-radius:2px 2px 0 0;flex:1;}
+.rpt-mini-xl{position:absolute;bottom:6px;left:12px;right:12px;display:flex;justify-content:space-around;}
+.rpt-mini-xl span{font-family:var(--mono);font-size:8px;color:var(--text3);}
+.rpt-conclusion{font-size:12.5px;color:var(--text1);line-height:1.75;white-space:pre-wrap;word-break:break-word;}
+/* evidence card */
+.rpt-evidence{border-radius:7px;border:1px solid var(--abrd);background:var(--adim);overflow:hidden;}
+.rpt-ev-head{display:flex;align-items:center;gap:7px;padding:8px 11px;cursor:pointer;user-select:none;}
+.rpt-ev-title{font-family:var(--mono);font-size:11px;color:var(--amber);font-weight:500;}
+.rpt-ev-count{font-family:var(--mono);font-size:9px;color:var(--text3);flex:1;}
+.rpt-ev-body{padding:0 11px 9px;display:flex;flex-direction:column;gap:5px;}
+.rpt-ev-row{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10.5px;}
+.rpt-ev-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;background:var(--border2);}
+.rpt-ev-row.sig .rpt-ev-dot{background:var(--green);}
+.rpt-ev-key{color:var(--text2);flex:1;}
+.rpt-ev-val{color:var(--text3);}
+.rpt-ev-row.sig .rpt-ev-val{color:var(--green);font-weight:500;}
+.rpt-ev-sep{height:1px;background:var(--border);margin:3px 0;}
+.rpt-anomaly{font-family:var(--mono);font-size:10px;color:var(--amber);display:flex;gap:5px;align-items:center;}
+/* SQL collapsible in report */
+.rpt-sql-toggle{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-family:var(--mono);font-size:10px;color:var(--text3);transition:all .12s;user-select:none;}
+.rpt-sql-toggle:hover{border-color:var(--text3);}
+.rpt-sql-block{background:var(--bg2);border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-top:4px;}
+.rpt-sql-hd{font-family:var(--mono);font-size:9px;color:var(--text3);padding:4px 10px;border-bottom:1px solid var(--border);}
+.rpt-sql-pre{font-family:var(--mono);font-size:10.5px;color:var(--text2);padding:8px 12px;margin:0;white-space:pre-wrap;word-break:break-all;max-height:130px;overflow-y:auto;line-height:1.55;}
+.rpt-sec-foot{display:flex;justify-content:flex-end;}
+.rpt-exp-sec{font-family:var(--mono);font-size:9px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer;transition:all .12s;}
+.rpt-exp-sec:hover{border-color:var(--text3);color:var(--text2);}
+
+/* profile card */
+.profile-card{border-radius:8px;border:1px solid var(--gbrd);background:var(--gdim);padding:10px 12px;display:flex;flex-direction:column;gap:6px;animation:slideUp .3s ease-out;}
+.profile-title{font-family:var(--mono);font-size:10px;color:var(--green);display:flex;align-items:center;gap:5px;}
+.profile-row{font-size:11.5px;color:var(--text1);line-height:1.5;padding-left:12px;}
+.profile-row::before{content:'→';color:var(--green);margin-left:-12px;margin-right:5px;font-family:var(--mono);}
+.profile-act{font-family:var(--mono);font-size:9px;color:var(--green);cursor:pointer;padding-left:12px;opacity:.7;transition:opacity .15s;}
+.profile-act:hover{opacity:1;}
+
+/* schema cols */
+.scol{display:flex;align-items:center;gap:6px;padding:6px 9px;border-radius:5px;border:1px solid var(--border);background:var(--bg1);transition:background .12s;}
+.scol:hover{background:var(--bg2);}
+.scol-nm{font-family:var(--mono);font-size:11px;color:var(--text1);min-width:90px;}
+.scol-tp{font-family:var(--mono);font-size:8.5px;padding:1px 5px;border-radius:3px;border:1px solid var(--border2);color:var(--text3);white-space:nowrap;}
+.scol-tp.n{border-color:var(--gbrd);color:var(--green);background:var(--gdim);}
+.scol-tp.d{border-color:var(--bbrd);color:var(--blue);background:var(--bdim);}
+.nb{width:36px;height:3px;border-radius:2px;background:var(--bg0);overflow:hidden;flex-shrink:0;}
+.nb-fill{height:100%;border-radius:2px;background:var(--amber);}
+.npct{font-family:var(--mono);font-size:9px;color:var(--text3);min-width:24px;}
+.ssmp{font-family:var(--mono);font-size:9px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+
+/* chart cards */
+.chart-card{border-radius:7px;border:1px solid var(--border2);background:var(--bg1);overflow:hidden;}
+.cc-head{display:flex;align-items:center;gap:7px;padding:8px 11px;cursor:pointer;transition:background .12s;}
+.cc-head:hover{background:var(--bg2);}
+.cc-num{font-family:var(--mono);font-size:10px;color:var(--text3);}
+.cc-title{font-family:var(--mono);font-size:11px;color:var(--text1);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cc-type{font-family:var(--mono);font-size:10px;color:var(--green);}
+.cc-exp{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer;transition:all .15s;}
+.cc-exp:hover{border-color:var(--green);color:var(--green);background:var(--gdim);}
+.cc-arr{font-size:8px;color:var(--text3);transition:transform .2s;}
+.cc-body{padding:0 11px 11px;}
+.mini-bars{display:flex;align-items:flex-end;gap:3px;height:100px;margin-bottom:6px;}
+.mb{flex:1;border-radius:3px 3px 0 0;cursor:pointer;transition:opacity .15s;}
+.mb:hover{opacity:.75;}
+.cc-labels{display:flex;gap:3px;margin-bottom:7px;}
+.cc-lbl{flex:1;font-family:var(--mono);font-size:8.5px;color:var(--text3);text-align:center;overflow:hidden;text-overflow:ellipsis;}
+.type-row{display:flex;gap:3px;}
+.tybtn{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:3px;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer;transition:all .12s;}
+.tybtn.on{border-color:var(--green);color:var(--green);background:var(--gdim);}
+
+/* ══ RESIZER ══ */
+.resizer{width:5px;min-width:5px;flex-shrink:0;background:transparent;cursor:col-resize;position:relative;z-index:20;border-left:1px solid var(--border);transition:border-color .15s;}
+.resizer::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:3px;height:28px;border-radius:3px;background:transparent;transition:background .15s,height .15s;}
+.resizer:hover::after,.resizer.drag::after{background:var(--green);height:44px;}
+.resizer:hover,.resizer.drag{border-left-color:var(--green);}
+body.resizing{cursor:col-resize!important;user-select:none;}
+body.resizing *{pointer-events:none!important;}
+body.resizing .resizer{pointer-events:auto!important;}
+
+/* ══ MODAL SYSTEM ══ */
+.modal-overlay{
+  position:fixed;inset:0;z-index:200;
+  background:rgba(9,9,11,.7);backdrop-filter:blur(4px);
+  display:flex;align-items:stretch;
+  animation:fadeIn .15s ease-out;
+}
+/* slide-in from left */
+.modal-panel{
+  width:420px;max-width:90vw;
+  background:var(--bg1);border-right:1px solid var(--border2);
+  display:flex;flex-direction:column;overflow:hidden;
+  animation:slideInLeft .2s ease-out;
+}
+.modal-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.modal-title{font-family:var(--mono);font-size:13px;color:var(--text1);flex:1;}
+.modal-close{width:28px;height:28px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);color:var(--text3);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.modal-close:hover{border-color:var(--red);color:var(--red);background:var(--rdim);}
+.modal-body{flex:1;overflow-y:auto;padding:14px;}
+
+/* projects modal content */
+.m-new-btn{width:100%;padding:9px 12px;border:1px dashed var(--border2);border-radius:7px;font-family:var(--mono);font-size:11px;color:var(--text3);cursor:pointer;text-align:center;background:none;transition:all .15s;margin-bottom:12px;}
+.m-new-btn:hover{border-color:var(--green);color:var(--green);background:var(--gdim);}
+.m-sec-lbl{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);padding:8px 2px 5px;}
+.m-proj-item{display:flex;flex-direction:column;gap:3px;padding:9px 10px;border-radius:7px;cursor:pointer;border:1px solid transparent;transition:all .12s;margin-bottom:2px;}
+.m-proj-item:hover{background:var(--bg2);border-color:var(--border);}
+.m-proj-item.on{background:var(--bg2);border-color:var(--gbrd);box-shadow:inset 2px 0 0 var(--green);}
+.m-proj-row{display:flex;align-items:center;gap:6px;}
+.m-proj-dot{width:5px;height:5px;border-radius:50%;background:var(--border2);flex-shrink:0;}
+.m-proj-item.on .m-proj-dot{background:var(--green);}
+.m-proj-title{font-family:var(--mono);font-size:11.5px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.m-proj-item.on .m-proj-title{color:var(--text1);}
+.m-proj-time{font-family:var(--mono);font-size:9px;color:var(--text3);}
+.m-proj-tags{display:flex;gap:4px;padding-left:11px;}
+.m-tag{font-family:var(--mono);font-size:9px;padding:1px 5px;border-radius:3px;border:1px solid var(--border2);color:var(--text3);background:var(--bg3);}
+.m-proj-item.on .m-tag{border-color:var(--gbrd);color:var(--green);background:var(--gdim);}
+
+/* schema modal content */
+.schema-modal-section{border-bottom:1px solid var(--border);padding:12px 2px;}
+.sm-label{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:9px;display:flex;align-items:center;gap:6px;}
+.sm-label.w{color:var(--red);}
+.sm-label.ok{color:var(--green);}
+.sm-label.i{color:var(--amber);}
+
+/* chat history modal */
+.ch-msg-user{display:flex;justify-content:flex-end;margin-bottom:8px;}
+.ch-bubble{max-width:75%;padding:8px 13px;border-radius:13px 13px 3px 13px;background:var(--bg3);border:1px solid var(--border2);font-size:12.5px;color:var(--text1);line-height:1.5;}
+.ch-msg-analyst{display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;}
+.ch-avatar{width:22px;height:22px;border-radius:5px;flex-shrink:0;background:var(--gdim);border:1px solid var(--gbrd);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:9px;color:var(--green);margin-top:1px;}
+.ch-text{font-size:12.5px;color:var(--text1);line-height:1.6;}
+.ch-time{font-family:var(--mono);font-size:9px;color:var(--text3);margin-top:3px;}
+
+/* fullscreen chart overlay */
+.chart-overlay{position:fixed;inset:0;z-index:300;background:rgba(9,9,11,.92);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:fadeIn .15s ease-out;}
+.chart-overlay-card{width:min(1000px,94vw);max-height:92vh;background:var(--bg1);border:1px solid var(--border2);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;animation:scaleIn .18s ease-out;}
+.co-head{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.co-title{font-family:var(--mono);font-size:13px;color:var(--text1);flex:1;}
+.co-close{width:30px;height:30px;border-radius:7px;border:1px solid var(--border2);background:var(--bg3);color:var(--text3);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.co-close:hover{border-color:var(--red);color:var(--red);background:var(--rdim);}
+.co-body{flex:1;padding:24px 28px;overflow:auto;}
+.big-bars{display:flex;align-items:flex-end;gap:8px;height:340px;}
+.bbr{flex:1;border-radius:5px 5px 0 0;cursor:pointer;transition:opacity .15s;}
+.bbr:hover{opacity:.75;}
+.big-lbls{display:flex;gap:8px;margin-top:10px;}
+.bbrl{flex:1;font-family:var(--mono);font-size:10px;color:var(--text3);text-align:center;}
+.co-foot{padding:12px 28px 16px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-shrink:0;}
+.co-stat{font-family:var(--mono);font-size:11px;color:var(--text3);}
+.co-stat span{color:var(--text1);margin-left:3px;}
+.co-dl{margin-left:auto;font-family:var(--mono);font-size:10px;padding:5px 12px;border-radius:5px;border:1px solid var(--border2);background:var(--bg2);color:var(--text2);cursor:pointer;transition:all .15s;}
+.co-dl:hover{border-color:var(--green);color:var(--green);}
+
+/* ── Inline Chat Column ── */
+.chat-col{
+  width:300px;min-width:260px;flex-shrink:0;
+  display:flex;flex-direction:column;overflow:hidden;
+  background:var(--bg1);border-left:1px solid var(--border);
+  animation:slideInRight .2s ease-out;
+  position:relative;
+  order:20; /* right of results-panel in main-area */
+}
+#chatResizer{ order:19; } /* just left of chat-col */
+.chat-col-head{
+  height:40px;min-height:40px;flex-shrink:0;
+  display:flex;align-items:center;padding:0 10px;gap:6px;
+  border-bottom:1px solid var(--border);background:var(--bg2);
+}
+.chat-col-session{
+  font-family:var(--mono);font-size:10.5px;color:var(--text2);
+  flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.chat-col-session em{color:var(--green);font-style:normal;}
+/* shared style for history + close icon buttons */
+.chat-hd-btn{
+  width:24px;height:24px;border-radius:5px;border:1px solid var(--border2);
+  background:var(--bg3);color:var(--text3);cursor:pointer;font-size:12px;
+  display:flex;align-items:center;justify-content:center;transition:all .12s;
+  flex-shrink:0;
+}
+.chat-hd-btn:hover{background:var(--bg2);border-color:var(--green);color:var(--green);}
+.chat-hd-btn.close-btn:hover{border-color:var(--red);color:var(--red);background:var(--rdim);}
+
+/* ── Session history slide-in (inside chat-col) ── */
+.session-drawer{
+  position:absolute;inset:0;z-index:10;
+  background:var(--bg1);
+  display:flex;flex-direction:column;overflow:hidden;
+  animation:slideUp .18s ease-out;
+}
+.session-drawer-head{
+  height:40px;min-height:40px;flex-shrink:0;
+  display:flex;align-items:center;padding:0 10px;gap:8px;
+  border-bottom:1px solid var(--border);background:var(--bg2);
+}
+.session-drawer-title{font-family:var(--mono);font-size:11px;color:var(--text2);flex:1;}
+.session-list{flex:1;overflow-y:auto;padding:8px;}
+.sess-new{
+  display:flex;align-items:center;gap:8px;width:100%;
+  padding:9px 12px;margin-bottom:6px;
+  border:1.5px dashed var(--border2);border-radius:8px;
+  background:none;cursor:pointer;transition:all .15s;
+  font-family:var(--mono);font-size:11px;color:var(--text3);
+}
+.sess-new:hover{border-color:var(--green);color:var(--green);background:var(--gdim);}
+.sess-new-icon{font-size:14px;}
+.sess-sec{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);padding:8px 4px 4px;}
+.sess-item{
+  display:flex;gap:0;border-radius:8px;border:1px solid transparent;
+  cursor:pointer;padding:9px 10px;transition:all .12s;margin-bottom:2px;
+  align-items:flex-start;gap:8px;
+}
+.sess-item:hover{background:var(--bg2);border-color:var(--border);}
+.sess-item.active-sess{background:var(--bg2);border-color:var(--gbrd);}
+.sess-dot{width:6px;height:6px;border-radius:50%;background:var(--border2);flex-shrink:0;margin-top:4px;}
+.sess-item.active-sess .sess-dot{background:var(--green);}
+.sess-body{flex:1;min-width:0;}
+.sess-name{font-family:var(--mono);font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sess-item.active-sess .sess-name{color:var(--text1);}
+.sess-meta{display:flex;gap:6px;margin-top:2px;font-family:var(--mono);font-size:9px;color:var(--text3);}
+.sess-preview{font-size:10.5px;color:var(--text3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-style:italic;}
+.sess-time{margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--text3);flex-shrink:0;}
+.chat-messages{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:2px;}
+.chat-empty{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:100%;gap:7px;opacity:.5;
+}
+.chat-empty-icon{font-size:22px;}
+.chat-empty-text{font-family:var(--mono);font-size:10px;color:var(--text3);text-align:center;line-height:1.6;}
+.cm-msg-user{display:flex;justify-content:flex-end;margin:3px 0;}
+.cm-bubble{
+  max-width:80%;padding:7px 11px;
+  border-radius:12px 12px 3px 12px;
+  background:var(--bg3);border:1px solid var(--border2);
+  font-size:12px;color:var(--text1);line-height:1.45;
+}
+.cm-msg-analyst{display:flex;gap:7px;align-items:flex-start;margin:5px 0;}
+.cm-avatar{
+  width:20px;height:20px;border-radius:4px;flex-shrink:0;margin-top:2px;
+  background:var(--gdim);border:1px solid var(--gbrd);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:8px;color:var(--green);
+}
+.cm-text{font-size:12px;color:var(--text1);line-height:1.55;flex:1;}
+.cm-time{font-family:var(--mono);font-size:9px;color:var(--text3);margin-top:2px;}
+.cm-sql-toggle{
+  display:inline-flex;align-items:center;gap:5px;margin-top:5px;
+  font-family:var(--mono);font-size:9.5px;color:var(--text3);cursor:pointer;
+  padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);
+  transition:all .12s;
+}
+.cm-sql-toggle:hover{border-color:var(--green);color:var(--green);}
+.chat-input-area{
+  flex-shrink:0;border-top:1px solid var(--border);
+  background:var(--bg1);padding:8px 10px;display:flex;flex-direction:column;gap:6px;
+}
+.chat-hints{display:flex;gap:4px;flex-wrap:wrap;}
+.chat-input-row{
+  display:flex;align-items:flex-end;gap:7px;
+  background:var(--bg3);border:1px solid var(--border2);border-radius:10px;
+  padding:8px 10px;transition:border-color .15s;
+}
+.chat-input-row:focus-within{border-color:var(--green);}
+.chat-ta{
+  flex:1;background:none;border:none;outline:none;
+  font-family:var(--sans);font-size:12.5px;color:var(--text1);
+  resize:none;min-height:20px;max-height:160px;line-height:1.45;overflow-y:auto;
+}
+.chat-ta::placeholder{color:var(--text3);}
+.chat-send{
+  width:27px;height:27px;border-radius:7px;
+  background:var(--green);border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:opacity .15s,transform .1s;flex-shrink:0;
+}
+.chat-send:hover{opacity:.85;transform:scale(.96);}
+.chat-send svg{width:12px;height:12px;fill:none;stroke:#060f09;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+
+/* ── Topbar project switcher button ── */
+.proj-topbtn{
+  display:flex;align-items:center;gap:7px;height:100%;padding:0 18px;
+  border:none;border-right:1px solid var(--border);
+  background:none;cursor:pointer;transition:background .15s;flex-shrink:0;
+}
+.proj-topbtn:hover{background:var(--bg2);}
+.ptb-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0;}
+.ptb-name{font-family:var(--mono);font-size:11px;color:var(--text1);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ptb-caret{font-family:var(--mono);font-size:9px;color:var(--text3);}
+
+/* ══ INLINE SCHEMA PANEL (above datagrid, collapsible) ══ */
+/* shared helpers used by inline panel */
+.ds-overview{
+  background:var(--bg2);border:1px solid var(--border);border-radius:8px;
+  padding:10px 14px;display:flex;flex-direction:column;gap:6px;
+}
+.ds-overview-name{font-family:var(--mono);font-size:11px;color:var(--green);}
+.ds-overview-info{font-family:var(--mono);font-size:10.5px;color:var(--text3);line-height:1.5;}
+.sp-section-label{
+  font-family:var(--mono);font-size:9.5px;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--text3);padding-bottom:4px;
+  border-bottom:1px solid var(--border);
+}
+
+#schemaPanel{
+  background:var(--bg0);border-bottom:1px solid var(--border);
+  flex-shrink:0;display:flex;flex-direction:column;
+  max-height:600px;
+  transition:max-height .35s cubic-bezier(.4,0,.2,1);
+  overflow:hidden;
+}
+#schemaPanel.sp-collapsed{ max-height:40px; }
+.sp-inline-hd{
+  height:40px;min-height:40px;display:flex;align-items:center;gap:8px;
+  padding:0 14px;cursor:pointer;border-bottom:1px solid var(--border);
+  flex-shrink:0;user-select:none;transition:background .12s;
+}
+.sp-inline-hd:hover{ background:var(--bg2); }
+#schemaPanel.sp-collapsed .sp-inline-hd{ border-bottom-color:transparent; }
+.sp-inline-chev{
+  font-size:8px;color:var(--text3);
+  transition:transform .25s;display:inline-block;
+}
+#schemaPanel.sp-collapsed .sp-inline-chev{ transform:rotate(-90deg); }
+.sp-inline-label{ font-family:var(--mono);font-size:10.5px;color:var(--text3); }
+.sp-inline-sep{ color:var(--border2);font-size:11px;margin:0 2px; }
+.sp-inline-dsname{ font-family:var(--mono);font-size:11px;color:var(--green); }
+.sp-inline-ver{
+  margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--green);
+  opacity:.7;
+}
+/* body of the inline panel */
+.sp-inline-body{
+  overflow-y:auto;padding:10px 14px 0;
+  display:flex;flex-direction:column;gap:8px;
+  overscroll-behavior:contain;
+}
+/* quality warning row (inline panel style, matches screenshot) */
+.sp-warn-row{
+  display:flex;align-items:center;gap:8px;padding:8px 12px;
+  background:var(--bg1);border:1px solid var(--abrd);border-left:3px solid var(--amber);
+  border-radius:7px;
+}
+.sp-warn-icon{ font-family:var(--mono);font-size:11px;color:var(--amber);flex-shrink:0; }
+.sp-warn-col{ font-family:var(--mono);font-size:11.5px;color:var(--text2); }
+.sp-warn-type{
+  font-family:var(--mono);font-size:9.5px;padding:1px 5px;border-radius:3px;
+  background:var(--bg3);border:1px solid var(--border2);color:var(--text3);margin-left:2px;
+}
+.sp-warn-note{ font-family:var(--mono);font-size:10px;color:var(--text3);margin-left:auto;white-space:nowrap; }
+/* auto-converted row (inline panel style) */
+.sp-auto-row{
+  display:flex;align-items:center;gap:8px;padding:6px 10px;
+  background:var(--bg2);border-radius:6px;
+}
+.sp-auto-chk{ font-family:var(--mono);font-size:11px;color:var(--green); }
+.sp-auto-col{ font-family:var(--mono);font-size:11.5px;color:var(--text2); }
+.sp-auto-pill{
+  font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:12px;
+  background:var(--gdim);border:1px solid var(--gbrd);color:var(--green);
+  white-space:nowrap;
+}
+.sp-auto-note{ font-family:var(--mono);font-size:10px;color:var(--text3);margin-left:auto; }
+/* update decisions button */
+.sp-update-wrap{
+  position:sticky;bottom:0;background:var(--bg0);
+  padding:10px 0 12px;flex-shrink:0;
+}
+.sp-update-btn{
+  width:100%;padding:9px;border-radius:8px;border:none;
+  background:var(--green);color:#060f09;
+  font-family:var(--mono);font-size:11.5px;font-weight:500;
+  cursor:pointer;transition:opacity .15s;
+}
+.sp-update-btn:hover{ opacity:.85; }
+
+/* ══ PROJECT PICKER MODAL (centered) ══ */
+#projModal{
+  position:fixed;inset:0;z-index:250;
+  background:rgba(9,9,11,.78);backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;
+  animation:fadeIn .15s ease-out;
+}
+.proj-picker{
+  width:min(800px,92vw);max-height:84vh;
+  background:var(--bg1);border:1px solid var(--border2);border-radius:12px;
+  display:flex;flex-direction:column;overflow:hidden;
+  animation:scaleIn .2s ease-out;
+}
+.pp-head{
+  display:flex;align-items:center;gap:12px;
+  padding:15px 20px;border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.pp-title{font-family:var(--mono);font-size:13px;color:var(--text1);font-weight:600;}
+.pp-search{
+  flex:1;display:flex;align-items:center;gap:8px;
+  padding:6px 12px;border-radius:7px;
+  background:var(--bg2);border:1px solid var(--border);
+}
+.pp-search-ico{color:var(--text3);font-size:10px;flex-shrink:0;}
+.pp-search input{flex:1;background:none;border:none;outline:none;font-family:var(--mono);font-size:11px;color:var(--text1);}
+.pp-search input::placeholder{color:var(--text3);}
+.pp-close{
+  width:28px;height:28px;border-radius:6px;border:1px solid var(--border2);
+  background:var(--bg3);color:var(--text3);cursor:pointer;font-size:14px;
+  display:flex;align-items:center;justify-content:center;transition:all .15s;
+}
+.pp-close:hover{border-color:var(--red);color:var(--red);background:var(--rdim);}
+.pp-body{flex:1;overflow-y:auto;padding:16px 20px;}
+.pp-new{
+  display:flex;align-items:center;gap:10px;width:100%;padding:11px 16px;margin-bottom:18px;
+  border:1.5px dashed var(--border2);border-radius:10px;background:none;
+  cursor:pointer;transition:all .15s;font-family:var(--mono);font-size:11px;color:var(--text3);
+}
+.pp-new:hover{border-color:var(--green);color:var(--green);background:var(--gdim);}
+.pp-new-icon{font-size:15px;line-height:1;}
+.pp-sec{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);padding:0 2px 8px;}
+.pp-grid-1{display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:18px;}
+.pp-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px;}
+.pp-card{
+  display:flex;align-items:stretch;border-radius:9px;
+  border:1px solid var(--border);background:var(--bg2);
+  cursor:pointer;overflow:hidden;transition:all .15s;
+}
+.pp-card:hover{border-color:var(--border2);background:var(--bg3);transform:translateY(-1px);box-shadow:0 4px 18px rgba(0,0,0,.45);}
+.pp-card.pp-cur{border-color:var(--gbrd);}
+.pp-col{flex:1;padding:12px 14px;display:flex;flex-direction:column;gap:5px;min-width:0;}
+.pp-cur-tag{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:9px;padding:1px 7px;border-radius:3px;background:var(--gdim);border:1px solid var(--gbrd);color:var(--green);width:fit-content;}
+.pp-name{font-family:var(--mono);font-size:12.5px;color:var(--text1);font-weight:500;line-height:1.35;}
+.pp-card.pp-cur .pp-name{color:var(--green);}
+.pp-tags{display:flex;gap:5px;flex-wrap:wrap;}
+.pp-tag{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:3px;border:1px solid var(--border2);color:var(--text3);background:var(--bg3);}
+.pp-card.pp-cur .pp-tag{border-color:var(--gbrd);color:var(--green);background:var(--gdim);}
+.pp-stats{font-family:var(--mono);font-size:10px;color:var(--text3);}
+.pp-stats span{color:var(--text2);}
+.pp-time{font-family:var(--mono);font-size:9px;color:var(--text3);}
+.pp-thumb{width:72px;flex-shrink:0;display:flex;align-items:flex-end;gap:3px;padding:12px 12px 18px;}
+.pp-bar{flex:1;border-radius:2px 2px 0 0;min-height:6px;}
+
+/* ── Project Cards (modal) ── */
+.proj-grid{display:flex;flex-direction:column;gap:8px;}
+.proj-new-card{
+  display:flex;align-items:center;gap:10px;padding:12px 14px;
+  border:1.5px dashed var(--border2);border-radius:10px;
+  cursor:pointer;transition:all .15s;background:none;width:100%;
+  font-family:var(--mono);font-size:11px;color:var(--text3);
+}
+.proj-new-card:hover{border-color:var(--green);color:var(--green);background:var(--gdim);}
+.proj-new-icon{font-size:18px;opacity:.6;}
+.proj-card{
+  display:flex;gap:0;border-radius:10px;border:1px solid var(--border);
+  background:var(--bg2);cursor:pointer;overflow:hidden;
+  transition:all .15s;position:relative;
+}
+.proj-card:hover{border-color:var(--border2);background:var(--bg3);transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.4);}
+.proj-card.active-proj{border-color:var(--gbrd);background:var(--bg2);}
+.proj-stripe{width:4px;flex-shrink:0;background:var(--border2);}
+.proj-card.active-proj .proj-stripe{background:var(--green);}
+.proj-body{flex:1;padding:11px 13px;display:flex;flex-direction:column;gap:5px;min-width:0;}
+.proj-name{font-family:var(--mono);font-size:12px;color:var(--text1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.proj-card.active-proj .proj-name{color:var(--green);}
+.proj-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.proj-ds{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid var(--border2);color:var(--text3);background:var(--bg3);}
+.proj-card.active-proj .proj-ds{border-color:var(--gbrd);color:var(--green);background:var(--gdim);}
+.proj-stats{display:flex;gap:8px;font-family:var(--mono);font-size:9px;color:var(--text3);}
+.proj-stats span{color:var(--text2);}
+.proj-time{font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap;margin-top:auto;}
+.proj-thumb{
+  width:64px;flex-shrink:0;display:flex;align-items:flex-end;gap:2px;
+  padding:10px 10px 14px;
+}
+.proj-bar{border-radius:2px 2px 0 0;flex:1;}
+.proj-sec-label{
+  font-family:var(--mono);font-size:9px;text-transform:uppercase;
+  letter-spacing:.1em;color:var(--text3);padding:12px 2px 5px;
+}
+
+/* right-click menu */
+.ctx-menu{position:fixed;z-index:400;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:4px 0;min-width:185px;box-shadow:0 8px 32px rgba(0,0,0,.5);animation:slideUp .12s ease-out;}
+.cm{display:flex;align-items:center;gap:8px;padding:7px 13px;cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--text2);transition:all .08s;}
+.cm:hover{background:var(--bg3);color:var(--text1);}
+.cm .ico{width:15px;text-align:center;}
+.cm-sep{height:1px;background:var(--border);margin:3px 8px;}
+.cm.g:hover{color:var(--green);}
+.cm.a:hover{color:var(--amber);}
+.cm.p:hover{color:var(--purple);}
+.cm.r:hover{color:var(--red);}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ══ TOPBAR ══ -->
+  <div class="topbar">
+    <div class="topbar-logo"><div class="logo"><em>analyst</em></div></div>
+    <button class="proj-topbtn" onclick="openProjModal()">
+      <span class="ptb-dot"></span>
+      <span class="ptb-name">Q4 Sales Performance Analysis</span>
+      <span class="ptb-caret">▾</span>
+    </button>
+    <div class="topbar-main">
+      <div class="ds-chips">
+        <div class="ds-chip">
+          <div class="ds-toggle"><div class="ds-dot"></div></div>
+          <span style="color:var(--green)">sales_2024.csv</span>
+          <span style="color:var(--text3);font-size:10px">· 12,847</span>
+        </div>
+        <div class="ds-chip" style="border-color:var(--blue);background:var(--bdim);">
+          <div class="ds-toggle" style="background:var(--blue)"><div class="ds-dot" style="left:11px;background:#0a131a"></div></div>
+          <span style="color:var(--blue)">customers.xlsx</span>
+          <span style="color:var(--text3);font-size:10px">· 3,201</span>
+        </div>
+        <button class="add-btn">+ add</button>
+      </div>
+      <div class="topbar-right">
+        <div class="agent-badge"><div class="pulse-dot"></div>4 agents ready</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ BODY ROW ══ -->
+  <div class="body-row">
+
+    <!-- ── Right Icon Sidebar ── -->
+    <div class="icon-sidebar">
+      <div class="sb-icon" id="sb-chat" onclick="toggleChat()" title="">
+        <span>💬</span>
+        <div class="tooltip">Chat</div>
+      </div>
+      <div class="sb-divider"></div>
+      <!-- Future slots -->
+      <div class="sb-icon" style="opacity:.3;cursor:default" title="">
+        <span>🔗</span>
+        <div class="tooltip">Join Graph (soon)</div>
+      </div>
+      <div class="sb-icon" style="opacity:.3;cursor:default" title="">
+        <span>📋</span>
+        <div class="tooltip">Templates (soon)</div>
+      </div>
+    </div>
+
+    <!-- ── Main Area ── -->
+    <div class="main-area">
+
+      <!-- ── Inline Chat Column (right of Results Panel) ── -->
+      <div class="chat-col" id="chatCol" style="display:none;">
+        <div class="chat-col-head">
+          <span class="chat-col-session">💬 <em>What is this dataset about?</em> · 09:12</span>
+          <button class="chat-hd-btn" onclick="openSessionDrawer()" title="Session history">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+              <circle cx="7" cy="7" r="5.5"/>
+              <path d="M7 4.5V7l2 1.5"/>
+            </svg>
+          </button>
+          <button class="chat-hd-btn close-btn" onclick="toggleChat()">✕</button>
+        </div>
+
+        <!-- Session History Drawer (slides over chat messages) -->
+        <div class="session-drawer" id="sessionDrawer" style="display:none;">
+          <div class="session-drawer-head">
+            <span class="session-drawer-title">Sessions · sales_2024.csv</span>
+            <button class="chat-hd-btn close-btn" onclick="closeSessionDrawer()">✕</button>
+          </div>
+          <div class="session-list">
+            <button class="sess-new" onclick="newSession()">
+              <span class="sess-new-icon">＋</span>
+              <span>New Session</span>
+              <span style="margin-left:auto;font-size:9px;opacity:.5">clears context</span>
+            </button>
+
+            <div class="sess-sec">current</div>
+            <div class="sess-item active-sess" onclick="switchSession(this,'What is this dataset about?')">
+              <div class="sess-dot"></div>
+              <div class="sess-body">
+                <div class="sess-name">What is this dataset about?</div>
+                <div class="sess-meta"><span>3 messages</span><span>·</span><span>2 queries</span></div>
+                <div class="sess-preview">↳ Any anomalies in revenue?</div>
+              </div>
+              <span class="sess-time">09:12</span>
+            </div>
+
+            <div class="sess-sec">earlier today</div>
+            <div class="sess-item" onclick="switchSession(this,'Revenue distribution by region')">
+              <div class="sess-dot"></div>
+              <div class="sess-body">
+                <div class="sess-name">Revenue distribution by region</div>
+                <div class="sess-meta"><span>11 messages</span><span>·</span><span>7 queries</span></div>
+                <div class="sess-preview">↳ Run regression: quantity vs revenue</div>
+              </div>
+              <span class="sess-time">08:40</span>
+            </div>
+
+            <div class="sess-sec">yesterday</div>
+            <div class="sess-item" onclick="switchSession(this,'Product margin by channel')">
+              <div class="sess-dot"></div>
+              <div class="sess-body">
+                <div class="sess-name">Product margin by channel</div>
+                <div class="sess-meta"><span>24 messages</span><span>·</span><span>15 queries</span></div>
+                <div class="sess-preview">↳ Compare discount impact on profit</div>
+              </div>
+              <span class="sess-time">yesterday</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-messages" id="chatMessages">
+          <div class="cm-msg-user"><div class="cm-bubble">What is this dataset about?</div></div>
+          <div class="cm-msg-analyst">
+            <div class="cm-avatar">A</div>
+            <div>
+              <div class="cm-text">This dataset contains 12,847 sales transactions from 2024, covering 4 regions, 5 product types, 3 channels. Key metrics: revenue, cost, quantity, profit margin, and discount rates.</div>
+              <div class="cm-time">09:14</div>
+            </div>
+          </div>
+          <div class="cm-msg-user"><div class="cm-bubble">Revenue distribution by region</div></div>
+          <div class="cm-msg-analyst">
+            <div class="cm-avatar">A</div>
+            <div>
+              <div class="cm-text">East leads with $4.2M (32.7%), West $3.1M (24.1%), Central $2.8M (21.8%), South $2.7M (21.4%). The East–South gap is statistically significant (p &lt; 0.01).</div>
+              <span class="cm-sql-toggle">▶ SQL · 1 query</span>
+              <div class="cm-time">09:17</div>
+            </div>
+          </div>
+          <div class="cm-msg-user"><div class="cm-bubble">Any anomalies in revenue?</div></div>
+          <div class="cm-msg-analyst">
+            <div class="cm-avatar">A</div>
+            <div>
+              <div class="cm-text">3 outliers detected above $50K (z-score &gt; 3.0): rows #847 ($52K), #2341 ($61K), #9102 ($58K). All are wholesale channel transactions from East region.</div>
+              <span class="cm-sql-toggle">▶ SQL · 2 queries</span>
+              <div class="cm-time">09:22</div>
+            </div>
+          </div>
+        </div>
+        <div class="chat-input-area">
+          <div class="chat-hints" id="chatHints">
+            <span class="hint" onclick="fillChatPanel(this)">Monthly trend</span>
+            <span class="hint" onclick="fillChatPanel(this)">Online vs offline</span>
+            <span class="hint" onclick="fillChatPanel(this)">Run regression</span>
+          </div>
+          <div class="chat-input-row">
+            <textarea class="chat-ta" id="chatTA" rows="1" placeholder="Ask a question about your data…" oninput="autoResizeTA(this)" onfocus="autoResizeTA(this)"></textarea>
+            <button class="chat-send"><svg viewBox="0 0 14 14"><path d="M2 7h10M7 2l5 5-5 5"/></svg></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Resizer (shown only when chat is open) -->
+      <div class="resizer" id="chatResizer" style="display:none;"></div>
+
+      <!-- DataGrid Column -->
+      <div class="datagrid-col" id="datagridCol">
+
+        <!-- SCHEMA FIRST-LOAD (shown initially) -->
+        <div class="schema-firstload" id="schemaFirstload">
+          <div class="sf-header">
+            <div class="sf-title">📂 sales_2024.csv — schema review</div>
+            <div class="sf-sub">12,847 rows · 10 columns · 842 KB · Resolve issues below before starting analysis</div>
+            <div class="sf-progress">
+              <div class="sf-prog-step"><div class="sf-prog-dot done"></div><span style="color:var(--green)">Upload</span></div>
+              <div class="sf-prog-arrow">→</div>
+              <div class="sf-prog-step"><div class="sf-prog-dot active"></div><span style="color:var(--amber)">Review</span></div>
+              <div class="sf-prog-arrow">→</div>
+              <div class="sf-prog-step"><div class="sf-prog-dot"></div><span>Analyze</span></div>
+            </div>
+          </div>
+
+          <div class="sf-body">
+            <!-- Blocking issues -->
+            <div>
+              <div class="sf-section-label warn">⛔ must resolve — 2 columns ambiguous</div>
+              <div class="bi-card" id="bc1">
+                <div class="bi-head"><span class="bi-col">order_date</span><span class="bi-badge">VARCHAR → ?</span></div>
+                <div class="bi-desc">Mixed date formats detected — cannot auto-convert safely.</div>
+                <div class="bi-samples">samples: <span class="s-ok">"2024-01-15"</span> · <span class="s-bad">"Jan 15 2024"</span> · <span class="s-bad">"15/01/24"</span></div>
+                <div class="opts">
+                  <div class="opt on" onclick="pickOpt(this,'bc1')">● Parse as DATE</div>
+                  <div class="opt" onclick="pickOpt(this,'bc1')">Keep as text</div>
+                  <div class="opt" onclick="pickOpt(this,'bc1')">Exclude column</div>
+                </div>
+              </div>
+              <div class="bi-card" id="bc2">
+                <div class="bi-head"><span class="bi-col">revenue_usd</span><span class="bi-badge">VARCHAR → ?</span></div>
+                <div class="bi-desc">Currency symbols prevent numeric conversion.</div>
+                <div class="bi-samples">samples: <span class="s-ok">"1234.50"</span> · <span class="s-bad">"$8,920"</span> · <span class="s-bad">"1.2K"</span></div>
+                <div class="opts">
+                  <div class="opt" onclick="pickOpt(this,'bc2')">● Strip & parse DOUBLE</div>
+                  <div class="opt" onclick="pickOpt(this,'bc2')">Keep as text</div>
+                  <div class="opt" onclick="pickOpt(this,'bc2')">Exclude column</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Warnings -->
+            <div>
+              <div class="sf-section-label info">⚠ data quality — will warn if used in analysis</div>
+              <div class="warn-row"><span style="color:var(--amber)">⚠</span><span style="font-family:var(--mono);font-size:11px;color:var(--text1)">discount_pct</span><span style="font-size:11px;color:var(--text2)">· 23% NULL values</span></div>
+              <div class="warn-row"><span style="color:var(--amber)">⚠</span><span style="font-family:var(--mono);font-size:11px;color:var(--text1)">cost</span><span style="font-size:11px;color:var(--text2)">· 1% NULL values</span></div>
+            </div>
+
+            <!-- Auto-converted -->
+            <div>
+              <div class="sf-section-label ok">✓ auto-converted — 3 columns</div>
+              <div class="auto-row"><span class="auto-check">✓</span><span class="auto-col">quantity</span><span class="auto-arr">VARCHAR →</span><span class="auto-to">INTEGER</span></div>
+              <div class="auto-row"><span class="auto-check">✓</span><span class="auto-col">profit_margin</span><span class="auto-arr">VARCHAR →</span><span class="auto-to">DOUBLE</span></div>
+              <div class="auto-row"><span class="auto-check">✓</span><span class="auto-col">channel</span><span class="auto-arr">kept as</span><span class="auto-to">VARCHAR</span></div>
+            </div>
+          </div>
+
+          <div class="sf-footer">
+            <span class="sf-status" id="sfStatus">⛔ resolve 2 blocking issues to continue</span>
+            <button class="confirm-btn" id="confirmBtn" disabled onclick="doConfirm()">confirm & start analysis →</button>
+          </div>
+        </div>
+
+        <!-- INLINE SCHEMA PANEL (shown after confirmation, collapsible) -->
+        <div id="schemaPanel" style="display:none">
+          <div class="sp-inline-hd" onclick="toggleSchemaPanel()">
+            <span class="sp-inline-chev">▼</span>
+            <span class="sp-inline-label">data</span>
+            <span class="sp-inline-sep">•</span>
+            <span class="sp-inline-dsname" id="spDsName">sales_2024.csv</span>
+            <span class="sp-inline-ver">✓ v1</span>
+          </div>
+          <div class="sp-inline-body" id="spBody">
+            <!-- ds overview -->
+            <div class="ds-overview">
+              <div class="ds-overview-name" id="spDsLabel">sales_2024.csv</div>
+              <div class="ds-overview-info" id="spDsInfo">12,847 rows · 10 columns · 842 KB · updated today 09:04</div>
+              <div class="ds-overview-info" id="spDsCols" style="color:var(--text3);font-size:10px">cols: order_date · revenue_usd · quantity · profit_margin · channel · region · discount_pct · cost · product · segment</div>
+            </div>
+            <!-- data quality section -->
+            <div class="sp-section-label" style="color:var(--amber)">△ data quality — will prompt only if used in analysis</div>
+            <div class="sp-warn-row">
+              <span class="sp-warn-icon">△</span>
+              <span class="sp-warn-col">discount_pct</span>
+              <span class="sp-warn-type">DOUBLE</span>
+              <span class="sp-warn-note">23% NULL values</span>
+            </div>
+            <div class="sp-warn-row">
+              <span class="sp-warn-icon">△</span>
+              <span class="sp-warn-col">cost</span>
+              <span class="sp-warn-type">DOUBLE</span>
+              <span class="sp-warn-note">1% NULL values</span>
+            </div>
+            <!-- auto-converted section -->
+            <div class="sp-section-label" style="color:var(--green)">✓ auto-converted by agent</div>
+            <div class="sp-auto-row">
+              <span class="sp-auto-chk">✓</span>
+              <span class="sp-auto-col">order_date</span>
+              <span class="sp-auto-pill">VARCHAR → DATE</span>
+              <span class="sp-auto-note">100% parsed</span>
+            </div>
+            <div class="sp-auto-row">
+              <span class="sp-auto-chk">✓</span>
+              <span class="sp-auto-col">revenue_usd</span>
+              <span class="sp-auto-pill">VARCHAR → DOUBLE</span>
+              <span class="sp-auto-note">100% numeric</span>
+            </div>
+            <div class="sp-auto-row">
+              <span class="sp-auto-chk">✓</span>
+              <span class="sp-auto-col">quantity</span>
+              <span class="sp-auto-pill">VARCHAR → INTEGER</span>
+              <span class="sp-auto-note">100% numeric</span>
+            </div>
+            <div class="sp-auto-row">
+              <span class="sp-auto-chk">✓</span>
+              <span class="sp-auto-col">profit_margin</span>
+              <span class="sp-auto-pill">VARCHAR → DOUBLE</span>
+              <span class="sp-auto-note">100% numeric</span>
+            </div>
+            <!-- update btn -->
+            <div class="sp-update-wrap">
+              <button class="sp-update-btn" onclick="toggleSchemaPanel()">↺ update decisions</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- DATAGRID (hidden until confirmed) -->
+        <div id="gridSection" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+          <div class="ctx-bar">
+            <span class="ctx-lbl">selected:</span>
+            <span class="ctx-tag">region</span>
+            <span class="ctx-tag">revenue</span>
+            <div class="ctx-sep"></div>
+            <button class="cbtn">📊 bar chart</button>
+            <button class="cbtn">⬡ scatter</button>
+            <button class="cbtn p">⚖ compare</button>
+            <button class="cbtn a">📈 correlation</button>
+            <div class="ctx-spacer"></div>
+            <span class="ctx-hint">right-click column for more</span>
+          </div>
+          <div class="grid-wrap">
+            <table class="grid">
+              <thead><tr>
+                <th class="rnh"><div class="th-in" style="min-width:44px;justify-content:center;padding:8px 4px"><span style="color:var(--text3);font-size:9px">#</span></div></th>
+                <th><div class="th-in"><span class="th-nm">date</span><span class="th-tp">DATE</span><span class="th-so">↕</span></div></th>
+                <th><div class="th-in sel"><span class="th-nm">region</span><span class="th-tp">VARCHAR</span><span class="th-so">↕</span></div></th>
+                <th><div class="th-in"><span class="th-nm">product</span><span class="th-tp">VARCHAR</span><span class="th-so">↕</span></div></th>
+                <th><div class="th-in sel"><span class="th-nm">revenue</span><span class="th-tp">DOUBLE</span><span class="th-so">↕</span></div></th>
+                <th><div class="th-in sorted"><span class="th-nm">quantity</span><span class="th-tp">INTEGER</span><span class="th-so">↓</span></div></th>
+                <th><div class="th-in"><span class="th-nm">cost</span><span class="th-tp">DOUBLE</span><span class="th-so">↕</span></div></th>
+                <th><div class="th-in"><span class="th-nm">channel</span><span class="th-tp">VARCHAR</span><span class="th-so">↕</span></div></th>
+                <th><div class="th-in"><span class="th-nm">customer_id</span><span class="th-tp">VARCHAR</span><span class="th-so">↕</span></div></th>
+                <th><div class="th-in"><span class="th-nm">discount_pct</span><span class="th-tp">DOUBLE</span><span class="th-so">↕</span></div></th>
+              </tr></thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+          <div class="footer">
+            <span>rows:<span class="fv g">12,847</span></span>
+            <span>cols:<span class="fv">10</span></span>
+            <span>selected:<span class="fv g">region, revenue</span></span>
+            <span style="margin-left:auto">showing:<span class="fv">1–100 of 12,847</span></span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Resizer -->
+      <div class="resizer" id="resizer"></div>
+
+      <!-- Results Panel -->
+      <div class="results-panel" id="resultsPanel">
+        <div class="res-tabs">
+          <div class="res-tab" data-t="schema">schema <span class="cnt">10</span></div>
+          <div class="res-tab on" data-t="chart">chart <span class="cnt">3</span></div>
+          <div class="res-tab" data-t="sql">sql <span class="cnt">3</span></div>
+          <div class="res-tab" data-t="report">report <span class="cnt">2</span></div>
+        </div>
+
+        <!-- ═══ SCHEMA TAB ═══ -->
+        <div class="tab-pane res-body" id="tab-schema" style="display:none;">
+          <div class="ds-block">
+            <div class="ds-head">
+              <span class="ds-name">sales_2024.csv</span>
+              <span style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-left:auto">12,847 rows · 10 cols</span>
+            </div>
+            <table class="ds-table">
+              <thead>
+                <tr>
+                  <th>column</th>
+                  <th>type</th>
+                  <th>null %</th>
+                  <th>samples</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>date</td>
+                  <td><span class="type-badge conv">DATE</span></td>
+                  <td><span class="null-bar"><span class="nb-track"><span class="nb-fill2" style="width:0%;background:var(--green)"></span></span><span class="nb-pct">0%</span></span></td>
+                  <td style="color:var(--text3)">2024-01-01 · 2024-06-22</td>
+                </tr>
+                <tr>
+                  <td>region</td>
+                  <td><span class="type-badge">VARCHAR</span></td>
+                  <td><span class="null-bar"><span class="nb-track"><span class="nb-fill2" style="width:0%;background:var(--green)"></span></span><span class="nb-pct">0%</span></span></td>
+                  <td style="color:var(--text3)">East · West · Central · South</td>
+                </tr>
+                <tr>
+                  <td>product</td>
+                  <td><span class="type-badge">VARCHAR</span></td>
+                  <td><span class="null-bar"><span class="nb-track"><span class="nb-fill2" style="width:2%;background:var(--amber)"></span></span><span class="nb-pct">2%</span></span></td>
+                  <td style="color:var(--text3)">Widget A · Gadget Pro</td>
+                </tr>
+                <tr>
+                  <td>revenue</td>
+                  <td><span class="type-badge">DOUBLE</span></td>
+                  <td><span class="null-bar"><span class="nb-track"><span class="nb-fill2" style="width:0%;background:var(--green)"></span></span><span class="nb-pct">0%</span></span></td>
+                  <td style="color:var(--text3)">1,234.50 · 8,920.00</td>
+                </tr>
+                <tr>
+                  <td>quantity</td>
+                  <td><span class="type-badge">INTEGER</span></td>
+                  <td><span class="null-bar"><span class="nb-track"><span class="nb-fill2" style="width:0%;background:var(--green)"></span></span><span class="nb-pct">0%</span></span></td>
+                  <td style="color:var(--text3)">12 · 45 · 128</td>
+                </tr>
+                <tr>
+                  <td>cost</td>
+                  <td><span class="type-badge">DOUBLE</span></td>
+                  <td><span class="null-bar"><span class="nb-track"><span class="nb-fill2" style="width:1%;background:var(--green)"></span></span><span class="nb-pct">1%</span></span></td>
+                  <td style="color:var(--text3)">890.20 · 5,410.00</td>
+                </tr>
+                <tr>
+                  <td>channel</td>
+                  <td><span class="type-badge">VARCHAR</span></td>
+                  <td><span class="null-bar"><span class="nb-track"><span class="nb-fill2" style="width:0%;background:var(--green)"></span></span><span class="nb-pct">0%</span></span></td>
+                  <td style="color:var(--text3)">online · retail · wholesale</td>
+                </tr>
+                <tr>
+                  <td>customer_id</td>
+                  <td><span class="type-badge">VARCHAR</span></td>
+                  <td><span class="null-bar"><span class="nb-track"><span class="nb-fill2" style="width:0%;background:var(--green)"></span></span><span class="nb-pct">0%</span></span></td>
+                  <td style="color:var(--text3)">C001 · C482 · C991</td>
+                </tr>
+                <tr>
+                  <td>discount_pct</td>
+                  <td><span class="type-badge">DOUBLE</span></td>
+                  <td><span class="null-bar"><span class="nb-track"><span class="nb-fill2" style="width:23%;background:var(--amber)"></span></span><span class="nb-pct" style="color:var(--amber)">23%</span></span></td>
+                  <td style="color:var(--text3)">0.05 · NULL</td>
+                </tr>
+                <tr>
+                  <td>profit_margin</td>
+                  <td><span class="type-badge conv">DOUBLE</span></td>
+                  <td><span class="null-bar"><span class="nb-track"><span class="nb-fill2" style="width:5%;background:var(--green)"></span></span><span class="nb-pct">5%</span></span></td>
+                  <td style="color:var(--text3)">0.28 · 0.35</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="ds-chips">
+              <span class="conv-chip">↻ date converted from string</span>
+              <span class="conv-chip">↻ profit_margin derived</span>
+              <span class="warn-chip">⚠ discount_pct 23% NULL</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ CHART TAB ═══ -->
+        <div class="tab-pane res-body" id="tab-chart">
+          <!-- Source sub-filter -->
+          <div class="src-filter-bar">
+            <button class="src-btn on" onclick="filterSrc(this)">all</button>
+            <button class="src-btn" data-src="chat" onclick="filterSrc(this)">💬 chat</button>
+            <button class="src-btn" data-src="grid" onclick="filterSrc(this)">📊 grid</button>
+          </div>
+          <!-- Chart #1 — from chat, expanded by default -->
+          <div class="chart-card open" data-src="chat">
+            <div class="cc-head" onclick="toggleCC(this)">
+              <span class="cc-num">#1</span>
+              <span class="cc-title">Revenue by Region</span>
+              <span class="src-badge-chat">💬</span>
+              <span class="cc-type">bar</span>
+              <button class="cc-exp" onclick="event.stopPropagation();openChart()">⤢</button>
+              <span class="cc-arr" style="transform:rotate(90deg)">▶</span>
+            </div>
+            <div class="cc-body">
+              <div class="chart-toolbar">
+                <button class="tybtn on">bar</button>
+                <button class="tybtn">line</button>
+                <button class="tybtn">area</button>
+                <button class="tybtn">pie</button>
+                <button class="tybtn">table</button>
+                <div style="flex:1"></div>
+                <button class="chart-dl">↓ svg</button>
+                <button class="chart-dl">⎘ data</button>
+              </div>
+              <div class="chart-area">
+                <div class="chart-bar" style="height:82%;background:#3effa0"></div>
+                <div class="chart-bar" style="height:61%;background:#3a9ff5"></div>
+                <div class="chart-bar" style="height:55%;background:#f0a83a"></div>
+                <div class="chart-bar" style="height:53%;background:#a57ef5"></div>
+                <div class="chart-xaxis">
+                  <span class="chart-xl">East</span><span class="chart-xl">West</span>
+                  <span class="chart-xl">Central</span><span class="chart-xl">South</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Chart #2 — from chat -->
+          <div class="chart-card" data-src="chat">
+            <div class="cc-head" onclick="toggleCC(this)">
+              <span class="cc-num">#2</span>
+              <span class="cc-title">Monthly Revenue Trend</span>
+              <span class="src-badge-chat">💬</span>
+              <span class="cc-type">line</span>
+              <button class="cc-exp" onclick="event.stopPropagation();openChart()">⤢</button>
+              <span class="cc-arr">▶</span>
+            </div>
+            <div class="cc-body" style="display:none">
+              <div class="chart-toolbar">
+                <button class="tybtn on">line</button>
+                <button class="tybtn">area</button>
+                <button class="tybtn">bar</button>
+                <button class="tybtn">table</button>
+                <div style="flex:1"></div>
+                <button class="chart-dl">↓ svg</button>
+                <button class="chart-dl">⎘ data</button>
+              </div>
+              <div class="chart-area">
+                <div class="chart-bar" style="height:40%;background:#3effa0;opacity:.5"></div>
+                <div class="chart-bar" style="height:55%;background:#3effa0;opacity:.6"></div>
+                <div class="chart-bar" style="height:48%;background:#3effa0;opacity:.65"></div>
+                <div class="chart-bar" style="height:72%;background:#3effa0;opacity:.7"></div>
+                <div class="chart-bar" style="height:65%;background:#3effa0;opacity:.75"></div>
+                <div class="chart-bar" style="height:88%;background:#3effa0;opacity:.85"></div>
+                <div class="chart-xaxis">
+                  <span class="chart-xl">Jan</span><span class="chart-xl">Feb</span>
+                  <span class="chart-xl">Mar</span><span class="chart-xl">Apr</span>
+                  <span class="chart-xl">May</span><span class="chart-xl">Jun</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Chart #3 — from grid (column select → scatter) -->
+          <div class="chart-card" data-src="grid">
+            <div class="cc-head" onclick="toggleCC(this)">
+              <span class="cc-num">#3</span>
+              <span class="cc-title">Qty vs Revenue Scatter</span>
+              <span class="src-badge-grid">📊</span>
+              <span class="cc-type">scatter</span>
+              <button class="cc-exp" onclick="event.stopPropagation();openChart()">⤢</button>
+              <span class="cc-arr">▶</span>
+            </div>
+            <div class="cc-body" style="display:none">
+              <div class="chart-toolbar">
+                <button class="tybtn on">scatter</button>
+                <button class="tybtn">table</button>
+                <div style="flex:1"></div>
+                <button class="chart-dl">↓ svg</button>
+                <button class="chart-dl">⎘ data</button>
+              </div>
+              <div class="chart-area" style="align-items:center;gap:0;padding:14px;">
+                <!-- scatter dots approximation -->
+                <svg width="100%" height="100%" viewBox="0 0 220 120" style="overflow:visible">
+                  <line x1="0" y1="120" x2="220" y2="120" stroke="#1f2128"/>
+                  <line x1="0" y1="0" x2="0" y2="120" stroke="#1f2128"/>
+                  <circle cx="30" cy="95" r="3" fill="#3effa0" opacity=".7"/>
+                  <circle cx="55" cy="78" r="3" fill="#3effa0" opacity=".7"/>
+                  <circle cx="70" cy="70" r="3" fill="#3effa0" opacity=".7"/>
+                  <circle cx="90" cy="58" r="3" fill="#3effa0" opacity=".7"/>
+                  <circle cx="105" cy="50" r="3" fill="#3effa0" opacity=".7"/>
+                  <circle cx="120" cy="40" r="3" fill="#3effa0" opacity=".7"/>
+                  <circle cx="140" cy="30" r="3" fill="#3effa0" opacity=".7"/>
+                  <circle cx="160" cy="22" r="3" fill="#3effa0" opacity=".7"/>
+                  <circle cx="185" cy="12" r="3" fill="#3effa0" opacity=".7"/>
+                  <line x1="20" y1="105" x2="200" y2="5" stroke="#3effa0" stroke-width="1" stroke-dasharray="3,3" opacity=".3"/>
+                  <text x="0" y="135" font-family="monospace" font-size="8" fill="#4a4d58">qty</text>
+                  <text x="195" y="135" font-family="monospace" font-size="8" fill="#4a4d58">rev</text>
+                  <text x="5" y="10" font-family="monospace" font-size="8" fill="#3effa0">r=0.87</text>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ SQL TAB ═══ -->
+        <div class="tab-pane res-body" id="tab-sql" style="display:none;">
+          <!-- Source sub-filter -->
+          <div class="src-filter-bar">
+            <button class="src-btn on" onclick="filterSrc(this)">all</button>
+            <button class="src-btn" data-src="chat" onclick="filterSrc(this)">💬 chat</button>
+            <button class="src-btn" data-src="grid" onclick="filterSrc(this)">📊 grid</button>
+          </div>
+          <!-- Query #1 — "Show me revenue by region" — 1 SQL step, expanded -->
+          <div class="sql-entry open" data-src="chat">
+            <div class="sql-entry-head" onclick="toggleSql(this)">
+              <span class="cc-num">#1</span>
+              <span class="src-badge-chat">💬</span>
+              <span class="cc-title" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Show me revenue by region</span>
+              <span style="font-family:var(--mono);font-size:10px;color:var(--green);margin-right:4px">1 query</span>
+              <span class="cc-arr" style="transform:rotate(90deg)">▶</span>
+            </div>
+            <div class="sql-body">
+              <!-- step block -->
+              <div class="sql-step">
+                <div class="sql-step-hd">
+                  <span>revenue by region</span>
+                  <span class="sql-tag s">SELECT</span>
+                </div>
+                <pre class="sql-pre">SELECT region,
+  SUM(revenue) AS total_revenue,
+  COUNT(*) AS order_count
+FROM sales_2024
+GROUP BY region
+ORDER BY total_revenue DESC;</pre>
+              </div>
+            </div>
+          </div>
+          <!-- Query #2 — "What's the monthly revenue trend?" — 1 SQL step -->
+          <div class="sql-entry" data-src="chat">
+            <div class="sql-entry-head" onclick="toggleSql(this)">
+              <span class="cc-num">#2</span>
+              <span class="src-badge-chat">💬</span>
+              <span class="cc-title" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">What's the monthly revenue trend?</span>
+              <span style="font-family:var(--mono);font-size:10px;color:var(--green);margin-right:4px">1 query</span>
+              <span class="cc-arr">▶</span>
+            </div>
+            <div class="sql-body" style="display:none">
+              <div class="sql-step">
+                <div class="sql-step-hd">
+                  <span>monthly revenue</span>
+                  <span class="sql-tag s">SELECT</span>
+                </div>
+                <pre class="sql-pre">SELECT DATE_TRUNC('month', date) AS month,
+  SUM(revenue) AS revenue
+FROM sales_2024
+GROUP BY 1
+ORDER BY 1;</pre>
+              </div>
+            </div>
+          </div>
+          <!-- Query #3 — "Investigate revenue outliers above 50K" — 2 SQL steps -->
+          <div class="sql-entry" data-src="chat">
+            <div class="sql-entry-head" onclick="toggleSql(this)">
+              <span class="cc-num">#3</span>
+              <span class="src-badge-chat">💬</span>
+              <span class="cc-title" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Investigate revenue outliers above 50K</span>
+              <span style="font-family:var(--mono);font-size:10px;color:var(--green);margin-right:4px">2 queries</span>
+              <span class="cc-arr">▶</span>
+            </div>
+            <div class="sql-body" style="display:none">
+              <div class="sql-step">
+                <div class="sql-step-hd">
+                  <span>compute z-scores</span>
+                  <span class="sql-tag a">STATS</span>
+                </div>
+                <pre class="sql-pre">WITH stats AS (
+  SELECT AVG(revenue) AS mu,
+    STDDEV(revenue) AS sigma
+  FROM sales_2024
+)
+SELECT *, (revenue - mu) / sigma AS z_score
+FROM sales_2024, stats
+ORDER BY z_score DESC;</pre>
+              </div>
+              <div class="sql-step" style="margin-top:6px">
+                <div class="sql-step-hd">
+                  <span>filter outliers</span>
+                  <span class="sql-tag s">SELECT</span>
+                </div>
+                <pre class="sql-pre">SELECT * FROM sales_2024, stats
+WHERE ABS(revenue - mu) / sigma > 3
+ORDER BY revenue DESC;</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ REPORT TAB ═══ -->
+        <div class="tab-pane" id="tab-report" style="display:none;flex-direction:column;">
+          <div class="rpt-header">
+            <div>
+              <div class="rpt-title">Q4 Sales Performance Analysis</div>
+              <div class="rpt-meta">2 analyses · sales_2024.csv</div>
+            </div>
+            <button class="rpt-dl">↓ export report</button>
+          </div>
+          <div class="rpt-sections">
+            <!-- Report section #1 -->
+            <div class="rpt-section">
+              <div class="rpt-sec-head open" onclick="toggleRpt(this)">
+                <span class="rpt-num">#1</span>
+                <span class="rpt-sec-title">Revenue distribution by region</span>
+                <span class="rpt-time">09:17</span>
+                <button class="rpt-star on" onclick="event.stopPropagation();this.classList.toggle('on')">★</button>
+                <span class="rpt-arr" style="transform:rotate(90deg)">▶</span>
+              </div>
+              <div class="rpt-body">
+                <!-- mini chart -->
+                <div class="rpt-mini-chart">
+                  <div class="rpt-mini-bar" style="height:82%;background:#3effa0;opacity:.8"></div>
+                  <div class="rpt-mini-bar" style="height:61%;background:#3a9ff5;opacity:.8"></div>
+                  <div class="rpt-mini-bar" style="height:55%;background:#f0a83a;opacity:.8"></div>
+                  <div class="rpt-mini-bar" style="height:53%;background:#a57ef5;opacity:.8"></div>
+                  <div class="rpt-mini-xl">
+                    <span>East</span><span>West</span><span>Central</span><span>South</span>
+                  </div>
+                </div>
+                <!-- conclusion -->
+                <div class="rpt-conclusion">East leads with $4.2M (32.7%), West $3.1M (24.1%), Central $2.8M (21.8%), South $2.7M (21.4%). The East–South revenue gap is statistically significant.</div>
+                <!-- evidence -->
+                <div class="rpt-evidence">
+                  <div class="rpt-ev-head" onclick="toggleEvidence(this)">
+                    <span>📊</span>
+                    <span class="rpt-ev-title">evidence</span>
+                    <span class="rpt-ev-count">2 tests · 1 anomaly</span>
+                    <span class="rpt-arr">▶</span>
+                  </div>
+                  <div class="rpt-ev-body">
+                    <div class="rpt-ev-row sig"><div class="rpt-ev-dot"></div><span class="rpt-ev-key">Mann-Whitney U · East vs South</span><span class="rpt-ev-val">p = 0.003 ✓</span></div>
+                    <div class="rpt-ev-row sig"><div class="rpt-ev-dot"></div><span class="rpt-ev-key">Effect size (Cohen's d)</span><span class="rpt-ev-val">d = 0.71 ✓</span></div>
+                    <div class="rpt-ev-sep"></div>
+                    <div class="rpt-anomaly"><span>⚠</span><span>East Q2 spike: +34% vs Q1 avg</span></div>
+                  </div>
+                </div>
+                <!-- SQL collapsible -->
+                <div>
+                  <div class="rpt-sql-toggle" onclick="toggleRptSql(this)">
+                    <span style="font-size:7px;transition:transform .2s">▶</span>
+                    <span>SQL</span>
+                    <span style="color:var(--green)">1</span>
+                  </div>
+                  <div class="rpt-sql-block" style="display:none;margin-top:6px">
+                    <div class="rpt-sql-hd">revenue by region</div>
+                    <pre class="rpt-sql-pre">SELECT region, SUM(revenue) AS total_revenue
+FROM sales_2024
+GROUP BY region
+ORDER BY total_revenue DESC;</pre>
+                  </div>
+                </div>
+                <div class="rpt-sec-foot">
+                  <button class="rpt-exp-sec">↓ export section</button>
+                </div>
+              </div>
+            </div>
+            <!-- Report section #2 -->
+            <div class="rpt-section">
+              <div class="rpt-sec-head" onclick="toggleRpt(this)">
+                <span class="rpt-num">#2</span>
+                <span class="rpt-sec-title">Revenue outliers: wholesale East channel</span>
+                <span class="rpt-time">09:22</span>
+                <button class="rpt-star" onclick="event.stopPropagation();this.classList.toggle('on')">☆</button>
+                <span class="rpt-arr">▶</span>
+              </div>
+              <div class="rpt-body" style="display:none">
+                <div class="rpt-conclusion">3 outliers detected above $50K (z-score &gt; 3.0): rows #847 ($52K), #2341 ($61K), #9102 ($58K). All are wholesale transactions from East region — likely bulk orders. Recommend verifying before excluding from analysis.</div>
+                <div class="rpt-evidence">
+                  <div class="rpt-ev-head" onclick="toggleEvidence(this)">
+                    <span>📊</span>
+                    <span class="rpt-ev-title">evidence</span>
+                    <span class="rpt-ev-count">1 test · 3 anomalies</span>
+                    <span class="rpt-arr">▶</span>
+                  </div>
+                  <div class="rpt-ev-body">
+                    <div class="rpt-ev-row sig"><div class="rpt-ev-dot"></div><span class="rpt-ev-key">Z-score threshold &gt; 3.0</span><span class="rpt-ev-val">3 rows ✓</span></div>
+                    <div class="rpt-ev-sep"></div>
+                    <div class="rpt-anomaly"><span>⚠</span><span>Row #847: $52,400 (z=3.2)</span></div>
+                    <div class="rpt-anomaly"><span>⚠</span><span>Row #2341: $61,800 (z=3.9)</span></div>
+                    <div class="rpt-anomaly"><span>⚠</span><span>Row #9102: $58,200 (z=3.6)</span></div>
+                  </div>
+                </div>
+                <div>
+                  <div class="rpt-sql-toggle" onclick="toggleRptSql(this)">
+                    <span style="font-size:7px;transition:transform .2s">▶</span>
+                    <span>SQL</span>
+                    <span style="color:var(--green)">2</span>
+                  </div>
+                  <div class="rpt-sql-block" style="display:none;margin-top:6px">
+                    <div class="rpt-sql-hd">z-score outlier detection</div>
+                    <pre class="rpt-sql-pre">WITH stats AS (
+  SELECT AVG(revenue) mu, STDDEV(revenue) sigma
+  FROM sales_2024
+)
+SELECT * FROM sales_2024, stats
+WHERE ABS(revenue - mu) / sigma > 3
+ORDER BY revenue DESC;</pre>
+                  </div>
+                </div>
+                <div class="rpt-sec-foot">
+                  <button class="rpt-exp-sec">↓ export section</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /main-area -->
+  </div><!-- /body-row -->
+</div><!-- /app -->
+
+<!-- ══ MODAL OVERLAY ══ -->
+<div class="modal-overlay" id="modalOverlay" style="display:none" onclick="closeModal(event)">
+  <div class="modal-panel" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <span class="modal-title" id="modalTitle">Modal</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- ══ CHART FULLSCREEN ══ -->
+<div class="chart-overlay" id="chartOverlay" style="display:none" onclick="closeChart(event)">
+  <div class="chart-overlay-card" onclick="event.stopPropagation()">
+    <div class="co-head">
+      <span class="co-title">Revenue by Region</span>
+      <div class="type-row" style="gap:4px">
+        <button class="tybtn on">bar</button><button class="tybtn">line</button>
+        <button class="tybtn">pie</button><button class="tybtn">table</button>
+      </div>
+      <button class="co-close" onclick="closeChart()">✕</button>
+    </div>
+    <div class="co-body">
+      <div class="big-bars">
+        <div class="bbr" style="height:82%;background:#3effa0"></div>
+        <div class="bbr" style="height:61%;background:#3a9ff5"></div>
+        <div class="bbr" style="height:55%;background:#f0a83a"></div>
+        <div class="bbr" style="height:53%;background:#a57ef5"></div>
+      </div>
+      <div class="big-lbls">
+        <div class="bbrl">East · $4.2M</div><div class="bbrl">West · $3.1M</div>
+        <div class="bbrl">Central · $2.8M</div><div class="bbrl">South · $2.7M</div>
+      </div>
+    </div>
+    <div class="co-foot">
+      <span class="co-stat">total:<span>$12.8M</span></span>
+      <span class="co-stat">avg per region:<span>$3.2M</span></span>
+      <span class="co-stat">East lead:<span>+32.7%</span></span>
+      <button class="co-dl">↓ SVG</button>
+      <button class="co-dl">↓ CSV</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ RIGHT-CLICK MENU ══ -->
+<div class="ctx-menu" id="ctxMenu" style="display:none">
+  <div class="cm g"><span class="ico">↑↓</span>Sort ascending</div>
+  <div class="cm g"><span class="ico">↓↑</span>Sort descending</div>
+  <div class="cm-sep"></div>
+  <div class="cm"><span class="ico">📊</span>Distribution</div>
+  <div class="cm"><span class="ico">Σ</span>Summary statistics</div>
+  <div class="cm p"><span class="ico">🔍</span>Detect outliers</div>
+  <div class="cm-sep"></div>
+  <div class="cm"><span class="ico">✏️</span>Rename</div>
+  <div class="cm a"><span class="ico">🧹</span>Fill null values</div>
+  <div class="cm r"><span class="ico">✕</span>Remove column</div>
+</div>
+
+<script>
+/* ══ Grid data ══ */
+const RS=['East','West','Central','South'],PS=['Widget A','Gadget Pro','Module X','Sensor Y'],CH=['online','retail','wholesale'];
+function rD(){return`2024-${String(Math.floor(Math.random()*12)+1).padStart(2,'0')}-${String(Math.floor(Math.random()*28)+1).padStart(2,'0')}`;}
+const tb=document.getElementById('tbody');
+for(let i=0;i<100;i++){
+  const r=(Math.random()*14800+200).toFixed(2),q=Math.floor(Math.random()*200)+1,c=(r*(0.4+Math.random()*.3)).toFixed(2),d=Math.random()>.23?(Math.random()*.25).toFixed(2):null;
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td class="rn">${i+1}</td><td class="dt">${rD()}</td><td class="sel">${RS[Math.floor(Math.random()*4)]}</td><td>${PS[Math.floor(Math.random()*4)]}</td><td class="num sel">${Number(r).toLocaleString()}</td><td class="num">${q}</td><td class="num">${Number(c).toLocaleString()}</td><td>${CH[Math.floor(Math.random()*3)]}</td><td>C-${Math.floor(Math.random()*5000)+1000}</td><td class="${d===null?'nul':'num'}">${d===null?'NULL':d}</td>`;
+  tb.appendChild(tr);
+}
+
+/* ══ Schema blocking issue resolution ══ */
+let resolved={bc1:true,bc2:false};
+function pickOpt(btn,id){
+  btn.closest('.opts').querySelectorAll('.opt').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  resolved[id]=true;
+  const card=document.getElementById(id);
+  card.classList.add('resolved');
+  updateStatus();
+}
+function updateStatus(){
+  const allDone=Object.values(resolved).every(Boolean);
+  document.getElementById('confirmBtn').disabled=!allDone;
+  document.getElementById('sfStatus').textContent=allDone?'✓ all issues resolved — ready to confirm':'⛔ resolve '+Object.values(resolved).filter(v=>!v).length+' blocking issue(s) to continue';
+  document.getElementById('sfStatus').className='sf-status'+(allDone?' ready':'');
+}
+updateStatus();
+
+/* ══ Confirm → collapse upward → show DataGrid ══ */
+function doConfirm(){
+  const fl=document.getElementById('schemaFirstload');
+  // snapshot height, then animate max-height → 0 (collapses upward)
+  fl.style.maxHeight=fl.offsetHeight+'px';
+  fl.style.overflow='hidden';
+  fl.style.flexShrink='0';
+  fl.offsetHeight; // force reflow
+  fl.style.transition='max-height .38s cubic-bezier(.4,0,.2,1)';
+  fl.style.maxHeight='0';
+  setTimeout(()=>{
+    fl.style.display='none';
+    // show inline schema panel — stays collapsed, user opens manually
+    const sp=document.getElementById('schemaPanel');
+    sp.style.display='flex';
+    sp.classList.add('sp-collapsed');
+    // show grid
+    const gs=document.getElementById('gridSection');
+    gs.style.display='flex';
+    gs.style.animation='gridReveal .4s ease-out';
+    document.getElementById('sb-schema').classList.add('active');
+  },400);
+}
+function toggleSchemaPanel(){
+  const sp=document.getElementById('schemaPanel');
+  sp.classList.toggle('sp-collapsed');
+}
+
+/* ══ Resizer ══ */
+const resizer=document.getElementById('resizer'),rp=document.getElementById('resultsPanel');
+rp.style.width='320px'; rp.style.flexShrink='0';
+let sx=0,sw=0;
+resizer.addEventListener('mousedown',e=>{
+  e.preventDefault();sx=e.clientX;sw=rp.offsetWidth;
+  resizer.classList.add('drag');document.body.classList.add('resizing');
+  const mv=e=>{rp.style.width=Math.max(240,sx-e.clientX+sw)+'px';};
+  const up=()=>{resizer.classList.remove('drag');document.body.classList.remove('resizing');document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};
+  document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+});
+
+/* ══ Modal system ══ */
+const PROJECTS_HTML=`
+<div class="proj-grid">
+  <button class="proj-new-card">
+    <span class="proj-new-icon">＋</span>
+    <span>New Project</span>
+    <span style="margin-left:auto;font-size:9px;opacity:.5">drop a dataset to begin</span>
+  </button>
+
+  <div class="proj-sec-label">★ starred</div>
+
+  <div class="proj-card active-proj" onclick="selectProj(this)">
+    <div class="proj-stripe"></div>
+    <div class="proj-body">
+      <div class="proj-name">Q4 Sales Performance Analysis</div>
+      <div class="proj-meta">
+        <span class="proj-ds">sales_2024.csv</span>
+        <span class="proj-ds">customers.xlsx</span>
+      </div>
+      <div class="proj-stats">12,847 rows · <span>8 analyses</span> · 3 charts</div>
+      <div class="proj-time">opened 2 min ago</div>
+    </div>
+    <div class="proj-thumb">
+      <div class="proj-bar" style="height:82%;background:var(--green);opacity:.7"></div>
+      <div class="proj-bar" style="height:61%;background:var(--blue);opacity:.7"></div>
+      <div class="proj-bar" style="height:55%;background:var(--amber);opacity:.7"></div>
+      <div class="proj-bar" style="height:53%;background:var(--purple);opacity:.7"></div>
+    </div>
+  </div>
+
+  <div class="proj-sec-label">today</div>
+
+  <div class="proj-card" onclick="selectProj(this)">
+    <div class="proj-stripe"></div>
+    <div class="proj-body">
+      <div class="proj-name">Customer Churn Prediction</div>
+      <div class="proj-meta">
+        <span class="proj-ds" style="border-color:var(--border2);color:var(--text3);background:var(--bg3)">churn_data.csv</span>
+      </div>
+      <div class="proj-stats">8,320 rows · <span>5 analyses</span> · 2 charts</div>
+      <div class="proj-time">1 hour ago</div>
+    </div>
+    <div class="proj-thumb">
+      <div class="proj-bar" style="height:70%;background:var(--red);opacity:.5"></div>
+      <div class="proj-bar" style="height:45%;background:var(--amber);opacity:.5"></div>
+      <div class="proj-bar" style="height:80%;background:var(--red);opacity:.5"></div>
+      <div class="proj-bar" style="height:35%;background:var(--amber);opacity:.5"></div>
+    </div>
+  </div>
+
+  <div class="proj-card" onclick="selectProj(this)">
+    <div class="proj-stripe"></div>
+    <div class="proj-body">
+      <div class="proj-name">Marketing ROI Deep Dive</div>
+      <div class="proj-meta">
+        <span class="proj-ds" style="border-color:var(--border2);color:var(--text3);background:var(--bg3)">campaigns.xlsx</span>
+      </div>
+      <div class="proj-stats">4,103 rows · <span>3 analyses</span> · 1 chart</div>
+      <div class="proj-time">3 hours ago</div>
+    </div>
+    <div class="proj-thumb">
+      <div class="proj-bar" style="height:40%;background:var(--purple);opacity:.5"></div>
+      <div class="proj-bar" style="height:60%;background:var(--purple);opacity:.5"></div>
+      <div class="proj-bar" style="height:75%;background:var(--purple);opacity:.5"></div>
+      <div class="proj-bar" style="height:55%;background:var(--purple);opacity:.5"></div>
+    </div>
+  </div>
+
+  <div class="proj-sec-label">yesterday</div>
+
+  <div class="proj-card" onclick="selectProj(this)">
+    <div class="proj-stripe"></div>
+    <div class="proj-body">
+      <div class="proj-name">Product Category Breakdown</div>
+      <div class="proj-meta">
+        <span class="proj-ds" style="border-color:var(--border2);color:var(--text3);background:var(--bg3)">products.csv</span>
+      </div>
+      <div class="proj-stats">2,891 rows · <span>6 analyses</span> · 4 charts</div>
+      <div class="proj-time">yesterday, 15:42</div>
+    </div>
+    <div class="proj-thumb">
+      <div class="proj-bar" style="height:50%;background:var(--blue);opacity:.5"></div>
+      <div class="proj-bar" style="height:90%;background:var(--blue);opacity:.5"></div>
+      <div class="proj-bar" style="height:30%;background:var(--blue);opacity:.5"></div>
+      <div class="proj-bar" style="height:65%;background:var(--blue);opacity:.5"></div>
+    </div>
+  </div>
+</div>`;
+
+const SCHEMA_HTML=`
+<div class="schema-modal-section">
+  <div class="sm-label w">⛔ resolved — 2 blocking issues</div>
+  <div class="bi-card resolved"><div class="bi-head"><span class="bi-col">order_date</span><span class="bi-badge" style="border-color:var(--gbrd);color:var(--green)">→ DATE ✓</span></div><div class="bi-desc" style="color:var(--text3)">Parsed as DATE (selected: "Parse as DATE")</div></div>
+  <div class="bi-card resolved" style="margin-top:8px"><div class="bi-head"><span class="bi-col">revenue_usd</span><span class="bi-badge" style="border-color:var(--gbrd);color:var(--green)">→ DOUBLE ✓</span></div><div class="bi-desc" style="color:var(--text3)">Stripped symbols, parsed as DOUBLE</div></div>
+</div>
+<div class="schema-modal-section">
+  <div class="sm-label i">⚠ warnings — 2 columns</div>
+  <div class="warn-row"><span style="color:var(--amber)">⚠</span><span style="font-family:var(--mono);font-size:11px;color:var(--text1)">discount_pct</span><span style="font-size:11px;color:var(--text2)">· 23% NULL</span></div>
+  <div class="warn-row" style="margin-top:4px"><span style="color:var(--amber)">⚠</span><span style="font-family:var(--mono);font-size:11px;color:var(--text1)">cost</span><span style="font-size:11px;color:var(--text2)">· 1% NULL</span></div>
+</div>
+<div class="schema-modal-section">
+  <div class="sm-label ok">✓ auto-converted — 3 columns</div>
+  <div class="auto-row"><span class="auto-check">✓</span><span class="auto-col">quantity</span><span class="auto-arr">→</span><span class="auto-to">INTEGER</span></div>
+  <div class="auto-row"><span class="auto-check">✓</span><span class="auto-col">profit_margin</span><span class="auto-arr">→</span><span class="auto-to">DOUBLE</span></div>
+  <div class="auto-row"><span class="auto-check">✓</span><span class="auto-col">channel</span><span class="auto-arr">kept</span><span class="auto-to">VARCHAR</span></div>
+</div>
+<div style="padding:12px 2px"><button class="confirm-btn" style="width:100%;font-size:11px">↻ re-apply decisions</button></div>`;
+
+const HISTORY_HTML=`
+<div class="ch-msg-user"><div class="ch-bubble">What is this dataset about?</div></div>
+<div class="ch-msg-analyst"><div class="ch-avatar">A</div><div><div class="ch-text">This dataset contains 12,847 sales transactions from 2024, covering 4 regions, 5 product types, 3 channels. Key metrics: revenue, cost, quantity, profit margin, and discount rates.</div><div class="ch-time">09:14</div></div></div>
+<div class="ch-msg-user"><div class="ch-bubble">Revenue distribution by region</div></div>
+<div class="ch-msg-analyst"><div class="ch-avatar">A</div><div><div class="ch-text">East leads with $4.2M (32.7%), West $3.1M (24.1%), Central $2.8M (21.8%), South $2.7M (21.4%). The East–South gap is statistically significant (p &lt; 0.01, Mann-Whitney U).</div><div class="ch-time">09:17</div></div></div>
+<div class="ch-msg-user"><div class="ch-bubble">Any anomalies in revenue?</div></div>
+<div class="ch-msg-analyst"><div class="ch-avatar">A</div><div><div class="ch-text">3 outliers detected above $50K (z-score &gt; 3.0): rows #847 ($52K), #2341 ($61K), #9102 ($58K). All are wholesale channel transactions from East region. Possibly bulk orders — recommend verifying before excluding.</div><div class="ch-time">09:22</div></div></div>`;
+
+function selectProj(card){
+  document.querySelectorAll('.proj-card').forEach(c=>c.classList.remove('active-proj'));
+  card.classList.add('active-proj');
+}
+
+function openModal(type){
+  const titles={projects:'Open Project',history:'Chat History'};
+  const bodies={projects:PROJECTS_HTML,history:HISTORY_HTML};
+  document.getElementById('modalTitle').textContent=titles[type]||type;
+  document.getElementById('modalBody').innerHTML=bodies[type]||'';
+  const panel=document.querySelector('.modal-panel');
+  panel.style.width='420px';
+  document.getElementById('modalOverlay').style.display='flex';
+}
+function closeModal(e){
+  if(!e||e.target===document.getElementById('modalOverlay'))
+    document.getElementById('modalOverlay').style.display='none';
+}
+
+/* ══ Chart overlay ══ */
+function openChart(){document.getElementById('chartOverlay').style.display='flex';}
+function closeChart(e){if(!e||e.target===document.getElementById('chartOverlay'))document.getElementById('chartOverlay').style.display='none';}
+
+/* ══ Project Picker ══ */
+function openProjModal(){document.getElementById('projModal').style.display='flex';}
+function closeProjModal(e){
+  if(!e||e.target===document.getElementById('projModal'))
+    document.getElementById('projModal').style.display='none';
+}
+function switchProj(card,name){
+  // Update current tag — remove from old active, add to new
+  document.querySelectorAll('.pp-card').forEach(c=>{
+    c.classList.remove('pp-cur');
+    const tag=c.querySelector('.pp-cur-tag');if(tag)tag.remove();
+    c.querySelector('.pp-name').style.color='';
+    c.querySelectorAll('.pp-tag').forEach(t=>{t.style.borderColor='';t.style.color='';t.style.background='';});
+  });
+  card.classList.add('pp-cur');
+  const curTag=document.createElement('span');curTag.className='pp-cur-tag';curTag.textContent='● current';
+  card.querySelector('.pp-col').prepend(curTag);
+  // Update topbar name
+  document.querySelector('.ptb-name').textContent=name;
+  setTimeout(()=>closeProjModal(),220);
+}
+function filterProjects(q){
+  q=q.toLowerCase();
+  document.querySelectorAll('.pp-card').forEach(c=>{
+    const n=c.querySelector('.pp-name').textContent.toLowerCase();
+    const tags=[...c.querySelectorAll('.pp-tag')].map(t=>t.textContent.toLowerCase()).join(' ');
+    c.style.display=(n.includes(q)||tags.includes(q))?'':'none';
+  });
+}
+
+/* ══ Keyboard ══ */
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeChart();closeProjModal();}});
+
+/* ══ Tabs ══ */
+const TAB_PANES={schema:'tab-schema',chart:'tab-chart',sql:'tab-sql',report:'tab-report'};
+document.querySelectorAll('.res-tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('.res-tab').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on');
+    const key=t.dataset.t;
+    Object.values(TAB_PANES).forEach(id=>{
+      const el=document.getElementById(id);
+      if(el) el.style.display='none';
+    });
+    const target=document.getElementById(TAB_PANES[key]);
+    if(target) target.style.display='flex';
+  });
+});
+
+/* ══ Chart card toggle ══ */
+/* ══ Source sub-filter (chart + sql tabs) ══ */
+function filterSrc(btn){
+  const bar=btn.closest('.src-filter-bar');
+  bar.querySelectorAll('.src-btn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  const src=btn.dataset.src||'all'; // 'all' has no data-src
+  const tab=bar.closest('.tab-pane');
+  tab.querySelectorAll('.chart-card[data-src],.sql-entry[data-src]').forEach(el=>{
+    el.style.display=(src==='all'||el.dataset.src===src)?'':'none';
+  });
+}
+
+function toggleCC(head){
+  const body=head.nextElementSibling;
+  if(!body||!body.classList.contains('cc-body'))return;
+  const open=body.style.display!=='none';
+  body.style.display=open?'none':'block';
+  head.querySelector('.cc-arr').style.transform=open?'':'rotate(90deg)';
+}
+
+/* ══ SQL entry toggle ══ */
+function toggleSql(head){
+  const entry=head.parentElement;
+  const body=head.nextElementSibling;
+  if(!body)return;
+  const open=body.style.display!=='none';
+  body.style.display=open?'none':'flex';
+  entry.classList.toggle('open',!open);
+  head.querySelector('.cc-arr').style.transform=open?'':'rotate(90deg)';
+}
+
+/* ══ Copy SQL ══ */
+function copySql(btn){
+  const pre=btn.closest('.sql-body').querySelector('.sql-pre');
+  navigator.clipboard.writeText(pre.textContent).then(()=>{
+    btn.textContent='✓ copied';
+    setTimeout(()=>btn.textContent='⎘ copy',1500);
+  });
+}
+
+/* ══ Report section toggle ══ */
+function toggleRpt(head){
+  const body=head.nextElementSibling;
+  if(!body)return;
+  const open=body.style.display!=='none';
+  body.style.display=open?'none':'flex';
+  head.classList.toggle('open',!open);
+}
+
+/* ══ Report SQL collapsible ══ */
+function toggleRptSql(toggle){
+  const block=toggle.nextElementSibling;
+  if(!block)return;
+  const open=block.style.display!=='none';
+  block.style.display=open?'none':'block';
+  toggle.querySelector('span').style.transform=open?'':'rotate(90deg)';
+}
+
+/* ══ Evidence card toggle ══ */
+function toggleEvidence(head){
+  const body=head.nextElementSibling;
+  if(!body)return;
+  const open=body.style.display!=='none';
+  body.style.display=open?'none':'flex';
+  head.querySelector('.rpt-arr').style.transform=open?'':'rotate(90deg)';
+}
+
+/* ══ Auto-resize textarea ══ */
+function autoResize(ta){ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,180)+'px';}
+function autoResizeTA(ta){ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,160)+'px';}
+
+/* ══ Toggle inline chat column ══ */
+function toggleChat(){
+  const col=document.getElementById('chatCol');
+  const cr=document.getElementById('chatResizer');
+  const btn=document.getElementById('sb-chat');
+  const isOpen=col.style.display!=='none';
+  col.style.display=isOpen?'none':'flex';
+  cr.style.display=isOpen?'none':'block';
+  btn.classList.toggle('active',!isOpen);
+  if(!isOpen){
+    const msgs=document.getElementById('chatMessages');
+    setTimeout(()=>msgs.scrollTo({top:msgs.scrollHeight,behavior:'smooth'}),50);
+  }
+}
+
+/* ══ Chat column resizer ══ */
+(function(){
+  const cr=document.getElementById('chatResizer');
+  const chatCol=document.getElementById('chatCol');
+  chatCol.style.width='300px';
+  let sx=0,sw=0;
+  cr.addEventListener('mousedown',e=>{
+    e.preventDefault();sx=e.clientX;sw=chatCol.offsetWidth;
+    cr.classList.add('drag');document.body.classList.add('resizing');
+    const mv=e=>{chatCol.style.width=Math.max(220,Math.min(520,sw-(e.clientX-sx)))+'px';};
+    const up=()=>{cr.classList.remove('drag');document.body.classList.remove('resizing');document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  });
+})();
+
+/* ══ Session drawer ══ */
+// Truncate a query to use as session name
+function truncateSessName(q,max=30){
+  q=q.trim();
+  return q.length<=max?q:q.slice(0,max-1)+'…';
+}
+
+// Current session state
+let currentSessEl=null;
+let currentSessNamed=true; // false = waiting for first query to set name
+
+function openSessionDrawer(){
+  document.getElementById('sessionDrawer').style.display='flex';
+}
+function closeSessionDrawer(){
+  document.getElementById('sessionDrawer').style.display='none';
+}
+function switchSession(el,name){
+  document.querySelectorAll('.sess-item').forEach(s=>s.classList.remove('active-sess'));
+  el.classList.add('active-sess');
+  currentSessEl=el;
+  currentSessNamed=true;
+  const time=el.querySelector('.sess-time').textContent;
+  document.querySelector('.chat-col-session').innerHTML=
+    `💬 <em>${truncateSessName(name)}</em> · ${time}`;
+  closeSessionDrawer();
+}
+function newSession(){
+  const now=new Date();
+  const time=`${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+  const item=document.createElement('div');
+  item.className='sess-item active-sess';
+  item.dataset.firstQuery='';
+  item.innerHTML=`<div class="sess-dot"></div><div class="sess-body"><div class="sess-name" style="color:var(--text3);font-style:italic">Untitled session</div><div class="sess-meta"><span>0 messages</span></div><div class="sess-preview" style="opacity:.4">waiting for first message…</div></div><span class="sess-time">${time}</span>`;
+  // insert after "current" label
+  const sec=document.querySelector('.sess-sec');
+  sec.after(item);
+  item.onclick=()=>switchSession(item, item.dataset.firstQuery||'Untitled session');
+  currentSessEl=item;
+  currentSessNamed=false;
+  // update all other items to inactive
+  document.querySelectorAll('.sess-item').forEach(s=>s!==item&&s.classList.remove('active-sess'));
+  // update header
+  document.querySelector('.chat-col-session').innerHTML=`💬 <em style="color:var(--text3);font-style:italic">Untitled session</em> · ${time}`;
+  closeSessionDrawer();
+  // clear messages area
+  document.getElementById('chatMessages').innerHTML=
+    `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;opacity:.35;padding:20px"><div style="font-size:22px">💬</div><div style="font-family:var(--mono);font-size:10px;color:var(--text3);text-align:center;line-height:1.7">New session started.<br>Context cleared.</div></div>`;
+}
+
+// Called when user sends a message — names the session from first query if still untitled
+function maybeName(query){
+  if(currentSessNamed||!currentSessEl||!query.trim())return;
+  const name=truncateSessName(query.trim());
+  currentSessNamed=true;
+  currentSessEl.dataset.firstQuery=query.trim();
+  // update name in drawer list
+  const nm=currentSessEl.querySelector('.sess-name');
+  nm.textContent=name;
+  nm.style.color='';nm.style.fontStyle='';
+  const prev=currentSessEl.querySelector('.sess-preview');
+  prev.textContent='↳ '+name;prev.style.opacity='';
+  // update header
+  const time=currentSessEl.querySelector('.sess-time').textContent;
+  document.querySelector('.chat-col-session').innerHTML=`💬 <em>${name}</em> · ${time}`;
+}
+
+/* ══ Send message ══ */
+document.querySelector('.chat-send').addEventListener('click',()=>{
+  const ta=document.getElementById('chatTA');
+  const q=ta.value.trim();
+  if(!q)return;
+  maybeName(q);
+  // append user bubble
+  const msgs=document.getElementById('chatMessages');
+  // remove empty state if present
+  const empty=msgs.querySelector('[style*="Untitled"]');
+  if(empty)msgs.innerHTML='';
+  const bubble=document.createElement('div');
+  bubble.className='cm-msg-user';
+  bubble.innerHTML=`<div class="cm-bubble">${q}</div>`;
+  msgs.appendChild(bubble);
+  msgs.scrollTo({top:msgs.scrollHeight,behavior:'smooth'});
+  ta.value='';autoResizeTA(ta);
+  // update msg count in drawer
+  if(currentSessEl){
+    const meta=currentSessEl.querySelector('.sess-meta span');
+    if(meta){const c=parseInt(meta.textContent)||0;meta.textContent=`${c+1} message${c+1!==1?'s':''}`;}
+  }
+});
+// also send on Ctrl/Cmd+Enter
+document.getElementById('chatTA').addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();document.querySelector('.chat-send').click();}
+});
+
+/* ══ Fill chat panel ══ */
+function fillChatPanel(chip){
+  const ta=document.getElementById('chatTA');
+  ta.value=chip.textContent;ta.focus();autoResizeTA(ta);
+}
+function fillChatStr(s){
+  // Open chat if closed
+  const col=document.getElementById('chatCol');
+  if(col.style.display==='none') toggleChat();
+  const ta=document.getElementById('chatTA');
+  if(!ta)return;
+  ta.value=s;ta.focus();autoResizeTA(ta);
+}
+
+/* ══ Right-click context menu ══ */
+const ctxMenu=document.getElementById('ctxMenu');
+document.querySelectorAll('.grid th .th-in').forEach(th=>{
+  th.addEventListener('contextmenu',e=>{
+    e.preventDefault();
+    const x=Math.min(e.clientX,window.innerWidth-200),y=Math.min(e.clientY,window.innerHeight-260);
+    ctxMenu.style.cssText=`display:block;left:${x}px;top:${y}px`;
+  });
+});
+document.addEventListener('click',()=>ctxMenu.style.display='none');
+</script>
+
+<!-- ══ PROJECT PICKER MODAL ══ -->
+<div id="projModal" style="display:none" onclick="closeProjModal(event)">
+  <div class="proj-picker" onclick="event.stopPropagation()">
+    <div class="pp-head">
+      <span class="pp-title">Switch Project</span>
+      <div class="pp-search">
+        <span class="pp-search-ico">◎</span>
+        <input type="text" placeholder="Search projects…" oninput="filterProjects(this.value)">
+      </div>
+      <button class="pp-close" onclick="closeProjModal()">✕</button>
+    </div>
+    <div class="pp-body" id="ppBody">
+
+      <!-- New project -->
+      <button class="pp-new">
+        <span class="pp-new-icon">＋</span>
+        <span>New Project</span>
+        <span style="margin-left:auto;font-size:9px;opacity:.5">drop a dataset to begin</span>
+      </button>
+
+      <!-- CURRENT -->
+      <div class="pp-sec">current</div>
+      <div class="pp-grid-1">
+        <div class="pp-card pp-cur" onclick="switchProj(this,'Q4 Sales Performance Analysis')">
+          <div class="pp-col">
+            <span class="pp-cur-tag">● current</span>
+            <div class="pp-name">Q4 Sales Performance Analysis</div>
+            <div class="pp-tags">
+              <span class="pp-tag">sales_2024.csv</span>
+              <span class="pp-tag">customers.xlsx</span>
+            </div>
+            <div class="pp-stats">12,847 rows · <span>8 analyses</span> · 3 charts</div>
+            <div class="pp-time">2 min ago</div>
+          </div>
+          <div class="pp-thumb">
+            <div class="pp-bar" style="height:82%;background:#3effa0;opacity:.8"></div>
+            <div class="pp-bar" style="height:61%;background:#3a9ff5;opacity:.8"></div>
+            <div class="pp-bar" style="height:55%;background:#f0a83a;opacity:.8"></div>
+            <div class="pp-bar" style="height:53%;background:#a57ef5;opacity:.8"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TODAY -->
+      <div class="pp-sec">today</div>
+      <div class="pp-grid-2">
+        <div class="pp-card" onclick="switchProj(this,'Customer Churn Prediction')">
+          <div class="pp-col">
+            <div class="pp-name">Customer Churn Prediction</div>
+            <div class="pp-tags"><span class="pp-tag">churn_data.csv</span></div>
+            <div class="pp-stats">8,320 rows · <span>5 analyses</span> · 2 charts</div>
+            <div class="pp-time">1 hour ago</div>
+          </div>
+          <div class="pp-thumb">
+            <div class="pp-bar" style="height:70%;background:#ff6b6b;opacity:.6"></div>
+            <div class="pp-bar" style="height:45%;background:#f0a83a;opacity:.6"></div>
+            <div class="pp-bar" style="height:80%;background:#ff6b6b;opacity:.6"></div>
+            <div class="pp-bar" style="height:35%;background:#f0a83a;opacity:.6"></div>
+          </div>
+        </div>
+        <div class="pp-card" onclick="switchProj(this,'Marketing ROI Deep Dive')">
+          <div class="pp-col">
+            <div class="pp-name">Marketing ROI Deep Dive</div>
+            <div class="pp-tags"><span class="pp-tag">campaigns.xlsx</span></div>
+            <div class="pp-stats">4,103 rows · <span>3 analyses</span> · 1 chart</div>
+            <div class="pp-time">3 hours ago</div>
+          </div>
+          <div class="pp-thumb">
+            <div class="pp-bar" style="height:40%;background:#a57ef5;opacity:.6"></div>
+            <div class="pp-bar" style="height:60%;background:#a57ef5;opacity:.6"></div>
+            <div class="pp-bar" style="height:75%;background:#a57ef5;opacity:.6"></div>
+            <div class="pp-bar" style="height:55%;background:#a57ef5;opacity:.6"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- EARLIER -->
+      <div class="pp-sec">earlier</div>
+      <div class="pp-grid-2">
+        <div class="pp-card" onclick="switchProj(this,'Product Category Breakdown')">
+          <div class="pp-col">
+            <div class="pp-name">Product Category Breakdown</div>
+            <div class="pp-tags"><span class="pp-tag">products.csv</span></div>
+            <div class="pp-stats">2,891 rows · <span>6 analyses</span> · 4 charts</div>
+            <div class="pp-time">yesterday 15:42</div>
+          </div>
+          <div class="pp-thumb">
+            <div class="pp-bar" style="height:50%;background:#3a9ff5;opacity:.6"></div>
+            <div class="pp-bar" style="height:90%;background:#3a9ff5;opacity:.6"></div>
+            <div class="pp-bar" style="height:30%;background:#3a9ff5;opacity:.6"></div>
+            <div class="pp-bar" style="height:65%;background:#3a9ff5;opacity:.6"></div>
+          </div>
+        </div>
+        <div class="pp-card" onclick="switchProj(this,'Supply Chain Analysis')">
+          <div class="pp-col">
+            <div class="pp-name">Supply Chain Analysis</div>
+            <div class="pp-tags">
+              <span class="pp-tag">logistics.csv</span>
+              <span class="pp-tag">warehouse.xlsx</span>
+            </div>
+            <div class="pp-stats">31,204 rows · <span>2 analyses</span> · 1 chart</div>
+            <div class="pp-time">2 days ago</div>
+          </div>
+          <div class="pp-thumb">
+            <div class="pp-bar" style="height:65%;background:#f0a83a;opacity:.6"></div>
+            <div class="pp-bar" style="height:40%;background:#3effa0;opacity:.6"></div>
+            <div class="pp-bar" style="height:80%;background:#f0a83a;opacity:.6"></div>
+            <div class="pp-bar" style="height:55%;background:#3effa0;opacity:.6"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>
