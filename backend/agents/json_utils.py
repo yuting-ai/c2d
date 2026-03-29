@@ -142,6 +142,356 @@ def extract_sql(text: str) -> str | None:
     return None
 
 
+def _find_matching_paren(s: str, open_pos: int) -> int:
+    """Find the closing ')' that matches '(' at open_pos.
+
+    Respects nested parentheses and string literals.
+    Returns -1 if no matching paren is found.
+    """
+    depth = 0
+    in_sq = in_dq = False
+    for i in range(open_pos, len(s)):
+        ch = s[i]
+        if ch == "'" and not in_dq:
+            in_sq = not in_sq
+        elif ch == '"' and not in_sq:
+            in_dq = not in_dq
+        if not in_sq and not in_dq:
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth -= 1
+                if depth == 0:
+                    return i
+    return -1
+
+
+def _split_select_items(select_list: str) -> list[str]:
+    """Split a SELECT column list at top-level commas (not inside parens/quotes)."""
+    items: list[str] = []
+    buf: list[str] = []
+    depth = 0
+    in_sq = in_dq = False
+    for ch in select_list:
+        if ch == "'" and not in_dq:
+            in_sq = not in_sq
+        elif ch == '"' and not in_sq:
+            in_dq = not in_dq
+        if not in_sq and not in_dq:
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth -= 1
+            elif ch == ',' and depth == 0:
+                items.append(''.join(buf).strip())
+                buf = []
+                continue
+        buf.append(ch)
+    if buf:
+        items.append(''.join(buf).strip())
+    return [x for x in items if x]
+
+
+def _select_item_output_name(item: str) -> str | None:
+    """Extract the output column name of a SELECT item.
+
+    'YEAR(release_date) AS year'     → 'year'
+    'SUM(total_sales) AS total_sales' → 'total_sales'
+    'genre'                           → 'genre'
+    '"schema"."col"'                  → 'col'
+    Returns None if the name cannot be determined (e.g., bare function call).
+    """
+    item = item.strip()
+    # Prefer explicit AS alias
+    m = re.search(r'\bAS\s+(\w+)\s*$', item, re.IGNORECASE)
+    if m:
+        return m.group(1)
+    # Qualified name: take the last part
+    parts = item.split('.')
+    last = parts[-1].strip().strip('"')
+    if '(' in last:
+        return None  # bare function call with no alias — skip
+    return last or None
+
+
+def _fix_window_in_grouped_cte(sql: str) -> str:
+    """Split a CTE that mixes GROUP BY aggregation with window functions into two CTEs.
+
+    DuckDB's binder resolves window functions before SELECT-level aliases are
+    available, so references like ``ORDER BY agg_alias`` inside ``OVER (...)``
+    in the same SELECT that contains ``GROUP BY`` raise a Binder Error.
+
+    Transformation (one CTE → two CTEs):
+
+        WITH ranked AS (
+          SELECT yr, genre, SUM(sales) AS sales,
+                 ROW_NUMBER() OVER (PARTITION BY yr ORDER BY sales DESC) AS rn
+          FROM tbl
+          GROUP BY yr, genre
+        )
+        SELECT ... FROM ranked WHERE rn <= 5
+
+    becomes:
+
+        WITH ranked_agg AS (
+          SELECT yr, genre, SUM(sales) AS sales
+          FROM tbl
+          GROUP BY yr, genre
+        ),
+        ranked AS (
+          SELECT yr, genre, sales,
+                 ROW_NUMBER() OVER (PARTITION BY yr ORDER BY sales DESC) AS rn
+          FROM ranked_agg
+        )
+        SELECT ... FROM ranked WHERE rn <= 5
+
+    Only processes the *first* CTE in the WITH clause. Multi-CTE inputs where
+    the problematic CTE is not first are rare in practice (models emit one CTE
+    for P-B queries) and left for future work.
+    """
+    if not sql:
+        return sql
+
+    # Quick pre-checks — both markers must be present
+    s_upper = sql.upper()
+    if 'GROUP BY' not in s_upper or ' OVER ' not in s_upper:
+        return sql
+
+    # Match the opening of the WITH clause and first CTE name
+    with_m = re.match(
+        r'(\s*WITH\s+(?:RECURSIVE\s+)?)(\w+)(\s+AS\s*\()',
+        sql,
+        re.IGNORECASE,
+    )
+    if not with_m:
+        return sql
+
+    with_keyword = with_m.group(1)  # e.g. 'WITH '
+    cte_name = with_m.group(2)      # e.g. 'ranked'
+    # group(3) ends with '(' — so with_m.end()-1 is the position of '('
+    open_paren_pos = with_m.end() - 1
+    if sql[open_paren_pos] != '(':
+        return sql  # safety guard
+
+    close_paren_pos = _find_matching_paren(sql, open_paren_pos)
+    if close_paren_pos == -1:
+        return sql
+
+    cte_body = sql[open_paren_pos + 1 : close_paren_pos]
+
+    # Confirm this CTE body has both GROUP BY and a window OVER
+    body_upper = cte_body.upper()
+    if 'GROUP BY' not in body_upper or ' OVER ' not in body_upper:
+        return sql
+
+    # ── Parse the SELECT list from the CTE body ────────────────────────────
+    select_m = re.match(r'\s*SELECT\s+', cte_body, re.IGNORECASE)
+    if not select_m:
+        return sql
+
+    after_select = cte_body[select_m.end():]
+
+    # Walk after_select to find the first FROM at paren depth 0
+    from_pos: int | None = None
+    depth = 0
+    in_sq = in_dq = False
+    i = 0
+    while i < len(after_select):
+        ch = after_select[i]
+        if ch == "'" and not in_dq:
+            in_sq = not in_sq
+        elif ch == '"' and not in_sq:
+            in_dq = not in_dq
+        if not in_sq and not in_dq:
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth -= 1
+            elif depth == 0 and re.match(r'\bFROM\b', after_select[i:], re.IGNORECASE):
+                from_pos = i
+                break
+        i += 1
+
+    if from_pos is None:
+        return sql
+
+    raw_select_list = after_select[:from_pos].strip()
+    from_and_rest = after_select[from_pos:].strip()  # 'FROM tbl WHERE … GROUP BY …'
+
+    # ── Split SELECT list and separate window-function items ───────────────
+    items = _split_select_items(raw_select_list)
+    if not items:
+        return sql
+
+    window_items = [it for it in items if re.search(r'\bOVER\s*\(', it, re.IGNORECASE)]
+    regular_items = [it for it in items if not re.search(r'\bOVER\s*\(', it, re.IGNORECASE)]
+
+    if not window_items or not regular_items:
+        return sql  # nothing to split
+
+    # ── Derive output column names for the second CTE's SELECT list ───────
+    col_refs = []
+    for it in regular_items:
+        name = _select_item_output_name(it)
+        if name:
+            col_refs.append(name)
+
+    second_select_prefix = ', '.join(col_refs) if col_refs else '*'
+
+    # ── Resolve raw-column references in window items ─────────────────────
+    # After the split, the second CTE reads from the *first* CTE which only
+    # exposes aliased columns (e.g. "year", not "YEAR(release_date)").
+    # Any raw expression used in PARTITION BY / ORDER BY inside the window
+    # function must be replaced with the corresponding alias.
+    #
+    # Example: PARTITION BY YEAR(release_date)  →  PARTITION BY year
+    #          (because the first CTE has YEAR(release_date) AS year)
+    expr_to_alias: dict[str, str] = {}
+    for it in regular_items:
+        m = re.match(r'(.+?)\s+AS\s+(\w+)\s*$', it.strip(), re.IGNORECASE | re.DOTALL)
+        if m:
+            expr = m.group(1).strip()
+            alias = m.group(2)
+            # Only map when expression differs from alias (skip "genre AS genre")
+            if expr.lower() != alias.lower():
+                expr_to_alias[expr] = alias
+
+    resolved_window_items = []
+    for witem in window_items:
+        resolved = witem
+        for expr, alias in expr_to_alias.items():
+            resolved = re.sub(re.escape(expr), alias, resolved, flags=re.IGNORECASE)
+        resolved_window_items.append(resolved)
+
+    # ── Build the two replacement CTEs ────────────────────────────────────
+    agg_name = f"{cte_name}_agg"
+    regular_str = ',\n    '.join(regular_items)
+    window_str = ',\n    '.join(resolved_window_items)
+
+    first_cte = (
+        f"{agg_name} AS (\n"
+        f"  SELECT\n"
+        f"    {regular_str}\n"
+        f"  {from_and_rest}\n"
+        f")"
+    )
+    second_cte = (
+        f"{cte_name} AS (\n"
+        f"  SELECT {second_select_prefix},\n"
+        f"    {window_str}\n"
+        f"  FROM {agg_name}\n"
+        f")"
+    )
+
+    after_cte = sql[close_paren_pos + 1:].strip()
+
+    if after_cte.startswith(','):
+        # Additional CTEs follow — keep the comma chain intact
+        new_sql = f"{with_keyword}{first_cte},\n{second_cte}{after_cte}"
+    else:
+        new_sql = f"{with_keyword}{first_cte},\n{second_cte}\n{after_cte}"
+
+    logger.info(
+        "sanitize_sql: split CTE '%s' → '%s' (aggregate) + '%s' (window) "
+        "to resolve DuckDB alias-in-window-ORDER-BY binder limitation",
+        cte_name, agg_name, cte_name,
+    )
+    return new_sql
+
+
+def _fix_aggregate_in_orderby(sql: str) -> str:
+    """Replace aggregate expressions in ORDER BY clauses with their SELECT aliases.
+
+    DuckDB raises a Binder Error when a window function's ORDER BY uses an aggregate
+    expression (e.g. SUM(col)) while the outer query already has GROUP BY.
+    The correct form is to reference the SELECT-level alias instead.
+
+    Example (before):
+        SUM(total_sales) AS total_sales,
+        ROW_NUMBER() OVER (PARTITION BY year ORDER BY SUM(total_sales) DESC)
+
+    Example (after, auto-corrected):
+        SUM(total_sales) AS total_sales,
+        ROW_NUMBER() OVER (PARTITION BY year ORDER BY total_sales DESC)
+
+    Also safe to apply to the main ORDER BY of a GROUP BY query — using the alias
+    rather than the aggregate expression is equivalent and preferred.
+    """
+    if not sql:
+        return sql
+
+    # Only applies to queries with GROUP BY (aggregation context)
+    if not re.search(r"\bGROUP\s+BY\b", sql, re.IGNORECASE):
+        return sql
+
+    # Build a map: normalised aggregate expression → SELECT alias
+    # Matches non-nested calls: SUM(col) AS alias, AVG(col_name) AS alias, etc.
+    agg_alias: dict[str, str] = {}
+    for m in re.finditer(
+        r"\b(SUM|AVG|COUNT|MIN|MAX)\s*\(([^()]+?)\)\s+AS\s+(\w+)",
+        sql,
+        re.IGNORECASE,
+    ):
+        fn = m.group(1).upper()
+        inner = m.group(2).strip().upper()
+        alias = m.group(3)
+        agg_alias[f"{fn}({inner})"] = alias
+
+    if not agg_alias:
+        return sql
+
+    # Replace aggregate expressions that appear directly after ORDER BY.
+    # The regex captures: ORDER BY <AGG_FUNC>(<args>) [ASC|DESC]
+    # It handles multiple comma-separated ORDER BY terms by repeating.
+    _AGG_TERM = re.compile(
+        r"(?i)"
+        r"(\bORDER\s+BY\s+)"                           # ORDER BY keyword
+        r"((?:"
+        r"(?:SUM|AVG|COUNT|MIN|MAX)\s*\([^()]+\)"     # aggregate term
+        r"|\w+"                                          # plain column/alias term
+        r")"
+        r"(?:\s+(?:ASC|DESC))?"                         # optional direction
+        r"(?:\s*,\s*"                                    # optional extra terms
+        r"(?:"
+        r"(?:SUM|AVG|COUNT|MIN|MAX)\s*\([^()]+\)"
+        r"|\w+"
+        r")"
+        r"(?:\s+(?:ASC|DESC))?"
+        r")*)",
+    )
+
+    def _fix_term(term: str) -> str:
+        """Replace a single ORDER BY term's aggregate with its alias, if known."""
+        def _repl(m: re.Match) -> str:
+            fn = m.group(1).upper()
+            inner = m.group(2).strip().upper()
+            key = f"{fn}({inner})"
+            return agg_alias.get(key, m.group(0))
+
+        return re.sub(
+            r"\b(SUM|AVG|COUNT|MIN|MAX)\s*\(([^()]+)\)",
+            _repl,
+            term,
+            flags=re.IGNORECASE,
+        )
+
+    def _fix_orderby(m: re.Match) -> str:
+        keyword = m.group(1)
+        terms_str = m.group(2)
+        fixed = _fix_term(terms_str)
+        return keyword + fixed
+
+    fixed_sql = _AGG_TERM.sub(_fix_orderby, sql)
+
+    if fixed_sql != sql:
+        logger.info(
+            "sanitize_sql: auto-corrected aggregate expression(s) in ORDER BY → alias "
+            "(prevents DuckDB Binder Error in window functions)"
+        )
+
+    return fixed_sql
+
+
 def sanitize_sql(sql: str) -> str:
     """Fix common SQL dialect mistakes from small models.
 
@@ -177,6 +527,15 @@ def sanitize_sql(sql: str) -> str:
         sql,
         flags=re.IGNORECASE,
     )
+
+    # Auto-correct aggregate expressions in ORDER BY → use SELECT alias
+    # Prevents DuckDB Binder Error in window functions alongside GROUP BY
+    sql = _fix_aggregate_in_orderby(sql)
+
+    # Split CTEs that mix GROUP BY aggregation with window functions into two CTEs.
+    # DuckDB cannot resolve SELECT-level aggregate aliases in window ORDER BY when
+    # GROUP BY is present in the same SELECT — must aggregate first, then rank.
+    sql = _fix_window_in_grouped_cte(sql)
 
     # Remove trailing semicolons (DuckDB handles both, but cleaner without)
     sql = sql.rstrip().rstrip(";").strip()

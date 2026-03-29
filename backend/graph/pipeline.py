@@ -75,8 +75,14 @@ def route_after_critic(state: AgentState) -> str:
             return "viz_agent"
         return "report"
 
-    target = state.get("retry_target", "sql")
-    target_map = {"sql": "sql_agent", "viz": "viz_agent", "stats": "stats_agent"}
+    target = state.get("retry_target") or "sql"
+    target_map = {
+        "sql": "sql_agent",
+        "planner": "planner",
+        "both": "planner",
+        "viz": "viz_agent",
+        "stats": "stats_agent",
+    }
     return target_map.get(target, "report")
 
 

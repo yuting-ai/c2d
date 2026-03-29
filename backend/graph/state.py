@@ -7,6 +7,7 @@ from operator import add
 class AgentState(TypedDict, total=False):
     # ── Input ──
     user_query: str
+    user_lang: str  # BCP-47 code from pipeline entry (langdetect)
     session_id: str
     project_id: str
 
@@ -16,10 +17,15 @@ class AgentState(TypedDict, total=False):
 
     # ── Planner output ──
     plan: list[str]                 # ["sql", "viz", "stats"]
+    intent_pattern: str             # "P-A" … "P-H" — canonical query shape from Planner
     sql_task: str
     viz_task: str | None
     stats_task: str | None
     involved_columns: list[str]
+
+    # ── NULL handling ──
+    data_quality_warnings: list[dict]   # [{column, table, sparsity_rate, recommended, ...}]
+    null_handling_config: dict          # {column_name: "mean"|"median"|"keep_null"|"exclude"}
 
     # ── SQL Agent output ──
     sql_result: dict                # {"steps": [...], "final_rows": [...], "final_columns": [...], "error": ...}
@@ -33,8 +39,9 @@ class AgentState(TypedDict, total=False):
     # ── Critic output (Phase 4) ──
     critic_verdict: str             # "pass" | "retry"
     critic_feedback: str
+    critic_hint: str                # machine-readable fix direction, e.g. "requires_window_function"
     retry_count: int
-    retry_target: str | None
+    retry_target: str | None        # "sql" | "planner" | "both" | None
 
     # ── Report output (Phase 4) ──
     report: dict | None

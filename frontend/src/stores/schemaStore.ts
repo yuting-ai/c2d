@@ -22,10 +22,15 @@ export interface BlockingIssue {
 }
 
 export interface WarningIssue {
+  key: string
   column: string
   col_type: string
+  issue_type: string
+  severity: string
+  must_solve: boolean
   description: string
-  options: string[] | null
+  options: { value: string; label: string }[] | null
+  selectedOption: string | null
 }
 
 export interface AutoConverted {
@@ -63,6 +68,7 @@ interface ProjectSchemaState {
 }
 
 interface SchemaStore {
+  analysisMode: 'simple' | 'advanced'
   datasets: DatasetState[]
   strategyVersion: number
   systemMode: 'empty' | 'clean' | 'chat'
@@ -79,9 +85,12 @@ interface SchemaStore {
   allResolved: () => boolean
 
   // Actions
+  setAnalysisMode: (mode: 'simple' | 'advanced') => void
   switchProject: (projectId: string | null) => void
+  loadProjectSchema: (projectId: string) => Promise<void>
   uploadDataset: (projectId: string, file: File) => Promise<void>
   selectOption: (datasetId: string, column: string, option: string) => void
+  selectWarningOption: (datasetId: string, warningKey: string, option: string) => void
   confirmSchema: (projectId: string) => Promise<void>
   reset: () => void
 }
@@ -95,7 +104,43 @@ const EMPTY_STATE: ProjectSchemaState = {
 
 const API_BASE = '/api'
 
+function getInitialAnalysisMode(): 'simple' | 'advanced' {
+  if (typeof window === 'undefined') return 'simple'
+  const raw = window.localStorage.getItem('c2d.analysisMode')
+  return raw === 'advanced' ? 'advanced' : 'simple'
+}
+
+function persistAnalysisMode(mode: 'simple' | 'advanced') {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem('c2d.analysisMode', mode)
+}
+
+function pickOption(options: Array<{ value: string; label: string }> | null | undefined, preferred: string[]): string | null {
+  if (!options || options.length === 0) return null
+  for (const p of preferred) {
+    if (options.some((o) => o.value === p)) return p
+  }
+  return options[0]?.value ?? null
+}
+
+async function parseApiResponse(res: Response): Promise<any> {
+  const raw = await res.text()
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return {
+      ok: false,
+      error: {
+        message: raw?.trim()
+          ? `Server returned non-JSON response: ${raw.slice(0, 120)}`
+          : `Request failed (${res.status})`,
+      },
+    }
+  }
+}
+
 export const useSchemaStore = create<SchemaStore>((set, get) => ({
+  analysisMode: getInitialAnalysisMode(),
   datasets: [],
   strategyVersion: 0,
   systemMode: 'empty',
@@ -109,8 +154,14 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
   allResolved: () => {
     const { datasets } = get()
     return datasets.every((ds) =>
-      ds.blockingIssues.every((issue) => issue.resolved)
+      ds.blockingIssues.every((issue) => issue.resolved) &&
+      ds.warningIssues.every((issue) => !issue.must_solve || Boolean(issue.selectedOption))
     )
+  },
+
+  setAnalysisMode: (mode) => {
+    persistAnalysisMode(mode)
+    set((s) => (s.analysisMode === mode ? s : { analysisMode: mode }))
   },
 
   switchProject: (projectId) => {
@@ -143,18 +194,79 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     })
   },
 
+  loadProjectSchema: async (projectId) => {
+    set({ uploading: true, error: null })
+    try {
+      const res = await fetch(`${API_BASE}/projects/${projectId}/schema`)
+      const json = await parseApiResponse(res)
+
+      if (!json.ok) {
+        set({ uploading: false, error: json.error?.message || 'Load schema failed' })
+        return
+      }
+
+      const d = json.data || {}
+      const restoredDatasets: DatasetState[] = (d.datasets || []).map((ds: any) => ({
+        id: ds.id,
+        name: ds.name,
+        rowCount: ds.row_count,
+        columnCount: ds.column_count,
+        sizeBytes: 0,
+        columns: (ds.columns || []).map((c: any) => ({
+          name: c.name,
+          original_type: c.type,
+          inferred_type: c.type,
+          null_pct: c.null_pct || 0,
+          sample_values: c.sample_values || [],
+        })),
+        blockingIssues: [],
+        warningIssues: [],
+        autoConverted: [],
+        confirmed: !!ds.confirmed,
+      }))
+
+      const strategyVersion = d.strategy_version || 0
+      const systemMode = d.system_mode || (restoredDatasets.length > 0 ? 'chat' : 'empty')
+
+      set((s) => {
+        const cache = { ...s._cache }
+        cache[projectId] = {
+          datasets: restoredDatasets,
+          strategyVersion,
+          systemMode,
+          activeTables: d.active_tables || [],
+        }
+        return {
+          _activeProjectId: projectId,
+          _cache: cache,
+          datasets: restoredDatasets,
+          strategyVersion,
+          systemMode,
+          activeTables: d.active_tables || [],
+          uploading: false,
+          confirming: false,
+          error: null,
+        }
+      })
+    } catch (e: any) {
+      set({ uploading: false, error: e.message || 'Network error' })
+    }
+  },
+
   uploadDataset: async (projectId, file) => {
     set({ uploading: true, error: null })
 
+    const mode = get().analysisMode
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('analysis_mode', mode)
 
     try {
       const res = await fetch(`${API_BASE}/projects/${projectId}/datasets`, {
         method: 'POST',
         body: formData,
       })
-      const json = await res.json()
+      const json = await parseApiResponse(res)
 
       if (!json.ok) {
         set({ uploading: false, error: json.error?.message || 'Upload failed' })
@@ -169,12 +281,32 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         columnCount: d.column_count,
         sizeBytes: d.size_bytes,
         columns: d.columns,
-        blockingIssues: d.blocking_issues.map((bi: any) => ({
-          ...bi,
-          selectedOption: null,
-          resolved: false,
-        })),
-        warningIssues: d.warning_issues,
+        blockingIssues: d.blocking_issues.map((bi: any) => {
+          const defaultOption =
+            mode === 'simple'
+              ? pickOption(bi?.options, bi?.inferred_type === 'DATE' ? ['iso'] : ['null', 'keep_string'])
+              : pickOption(bi?.options, bi?.inferred_type === 'DATE' ? ['iso'] : [])
+          return {
+            ...bi,
+            selectedOption: defaultOption,
+            resolved: Boolean(defaultOption),
+          }
+        }),
+        warningIssues: (d.warning_issues || []).map((w: any) => {
+          const defaultOption =
+            mode === 'simple'
+              ? (w?.issue_type === 'missing'
+                  ? pickOption(w?.options, ['keep', 'keep_null', 'unknown', 'mode'])
+                  : w?.issue_type === 'outlier'
+                    ? pickOption(w?.options, ['keep'])
+                    : null)
+              : null
+          return {
+            ...w,
+            must_solve: Boolean(w?.must_solve),
+            selectedOption: defaultOption,
+          }
+        }),
         autoConverted: d.auto_converted,
         confirmed: false,
       }
@@ -187,6 +319,11 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         cache[projectId] = { datasets: newDatasets, strategyVersion: s.strategyVersion, systemMode: 'clean', activeTables: s.activeTables }
         return { ...newState, _cache: cache }
       })
+
+      // In simple mode, auto-apply defaults and confirm immediately.
+      if (mode === 'simple') {
+        await get().confirmSchema(projectId)
+      }
     } catch (e: any) {
       set({ uploading: false, error: e.message || 'Network error' })
     }
@@ -200,7 +337,8 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
           ...ds,
           blockingIssues: ds.blockingIssues.map((issue) => {
             if (issue.column !== column) return issue
-            return { ...issue, selectedOption: option, resolved: true }
+            const hasSelection = Boolean(option && option.trim().length > 0)
+            return { ...issue, selectedOption: hasSelection ? option : null, resolved: hasSelection }
           }),
         }
       }),
@@ -213,13 +351,52 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     const decisions: Record<string, string> = {}
     ds.blockingIssues.forEach((issue) => {
       if (issue.column === column) {
-        decisions[column] = option
+        if (option && option.trim().length > 0) {
+          decisions[column] = option
+        }
       } else if (issue.selectedOption) {
         decisions[issue.column] = issue.selectedOption
       }
     })
 
     // Fire and forget — decisions are stored on backend
+    const projectId = useProjectStore.getState().activeProjectId || 'default'
+    fetch(`${API_BASE}/projects/${projectId}/datasets/${datasetId}/decisions`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decisions }),
+    }).catch(() => {})
+  },
+
+  selectWarningOption: (datasetId, warningKey, option) => {
+    set((s) => ({
+      datasets: s.datasets.map((ds) => {
+        if (ds.id !== datasetId) return ds
+        return {
+          ...ds,
+          warningIssues: ds.warningIssues.map((issue) => {
+            if (issue.key !== warningKey) return issue
+            return { ...issue, selectedOption: option }
+          }),
+        }
+      }),
+    }))
+
+    const ds = get().datasets.find((d) => d.id === datasetId)
+    if (!ds) return
+
+    const decisions: Record<string, string> = {}
+    ds.blockingIssues.forEach((issue) => {
+      if (issue.selectedOption) {
+        decisions[issue.column] = issue.selectedOption
+      }
+    })
+    ds.warningIssues.forEach((issue) => {
+      if (issue.selectedOption) {
+        decisions[issue.key] = issue.selectedOption
+      }
+    })
+
     const projectId = useProjectStore.getState().activeProjectId || 'default'
     fetch(`${API_BASE}/projects/${projectId}/datasets/${datasetId}/decisions`, {
       method: 'PUT',
@@ -239,6 +416,11 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
           decisions[issue.column] = issue.selectedOption
         }
       })
+      ds.warningIssues.forEach((issue) => {
+        if (issue.selectedOption) {
+          decisions[issue.key] = issue.selectedOption
+        }
+      })
 
       if (Object.keys(decisions).length > 0) {
         await fetch(`${API_BASE}/projects/${projectId}/datasets/${ds.id}/decisions`, {
@@ -255,7 +437,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         body: '{}',
       })
-      const json = await res.json()
+      const json = await parseApiResponse(res)
 
       if (!json.ok) {
         set({ confirming: false, error: json.error?.message || 'Confirm failed' })

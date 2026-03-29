@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>c2d analyst — v6</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg0:#09090b;--bg1:#0d0d10;--bg2:#111318;--bg3:#161820;
+  --border:#1f2128;--border2:#272a33;
+  --text1:#e4e5e8;--text2:#8a8c94;--text3:#4a4d58;
+  --green:#3effa0;--gdim:#1a3d2c;--gbrd:#1f4d35;
+  --amber:#f0a83a;--adim:#2a1f08;--abrd:#3d2e0a;
+  --purple:#a57ef5;--pdim:#1e1535;--pbrd:#2e1f55;
+  --red:#f05a5a;--rdim:#2a0f0f;--rbrd:#4d1f1f;
+  --blue:#3a9ff5;--bdim:#0f1f33;--bbrd:#1a3355;
+  --mono:'IBM Plex Mono','SF Mono',monospace;
+  --sans:'DM Sans','Inter',system-ui,sans-serif;
+  --sidebar-w:56px;
+}
+html,body{height:100%;background:var(--bg0);overflow:hidden;}
+body{font-family:var(--sans);color:var(--text2);}
+::-webkit-scrollbar{width:3px;height:3px;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideInLeft{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes scaleIn{from{opacity:0;transform:scale(.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+@keyframes gridReveal{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+#app{display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+
+/* ══ TOPBAR ══ */
+.topbar{
+  height:50px;min-height:50px;flex-shrink:0;
+  background:var(--bg1);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 16px 0 0;z-index:10;
+}
+.proj-switcher{
+  height:100%;display:flex;align-items:center;
+  padding:0 16px;gap:10px;flex-shrink:0;
+  border-right:1px solid var(--border);cursor:pointer;
+  transition:background .15s;user-select:none;min-width:200px;
+}
+.proj-switcher:hover{background:var(--bg3);}
+.proj-switcher:hover .proj-sw-arrow{color:var(--green);}
+.proj-sw-logo{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--text1);letter-spacing:.5px;flex-shrink:0;}
+.proj-sw-logo em{color:var(--green);font-style:normal;}
+.proj-sw-sep{width:1px;height:16px;background:var(--border2);}
+.proj-sw-name{font-family:var(--mono);font-size:11px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.proj-sw-arrow{font-size:9px;color:var(--text3);transition:color .15s;flex-shrink:0;}
+
+.topbar-main{flex:1;display:flex;align-items:center;gap:12px;padding:0 16px;}
+.ds-chips{display:flex;gap:6px;align-items:center;flex:1;overflow:hidden;}
+
+/* ── Dataset chip — larger gear ── */
+.ds-chip{
+  display:flex;align-items:stretch;gap:0;
+  border-radius:7px;border:1px solid var(--green);background:var(--gdim);
+  font-family:var(--mono);font-size:11px;flex-shrink:0;overflow:hidden;
+  height:30px;
+}
+.ds-chip-main{
+  display:flex;align-items:center;gap:7px;
+  padding:0 10px 0 8px;cursor:pointer;transition:opacity .15s;
+}
+.ds-chip-main:hover{opacity:.8;}
+.ds-toggle{width:22px;height:12px;border-radius:6px;background:var(--green);position:relative;flex-shrink:0;}
+.ds-dot{position:absolute;top:1.5px;left:11px;width:9px;height:9px;border-radius:50%;background:#0a1a13;}
+/* Larger gear — more breathing room, bigger icon */
+.ds-chip-gear{
+  display:flex;align-items:center;justify-content:center;
+  width:36px;flex-shrink:0;
+  cursor:pointer;color:var(--text3);font-size:14px;
+  border-left:1px solid var(--gbrd);
+  background:transparent;border-top:none;border-right:none;border-bottom:none;
+  transition:all .15s;
+}
+.ds-chip-gear:hover{background:rgba(62,255,160,.14);color:var(--green);}
+.ds-chip.blue{border-color:var(--blue);background:var(--bdim);}
+.ds-chip.blue .ds-chip-gear{border-left-color:var(--bbrd);}
+.ds-chip.blue .ds-chip-gear:hover{background:rgba(58,159,245,.14);color:var(--blue);}
+.ds-chip.blue .ds-toggle{background:var(--blue);}
+.ds-chip.blue .ds-dot{background:#0a131a;}
+
+.add-btn{font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:6px;border:1px dashed var(--border2);background:none;color:var(--text3);cursor:pointer;transition:all .15s;white-space:nowrap;}
+.add-btn:hover{border-color:var(--green);color:var(--green);}
+.topbar-right{display:flex;align-items:center;gap:10px;}
+.agent-badge{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--green);}
+.pulse-dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s ease-in-out infinite;}
+
+/* Report button in topbar */
+.report-btn{
+  display:flex;align-items:center;gap:6px;
+  font-family:var(--mono);font-size:11px;
+  padding:5px 12px;border-radius:6px;
+  border:1px solid var(--border2);background:var(--bg3);
+  color:var(--text2);cursor:pointer;transition:all .15s;
+  white-space:nowrap;
+}
+.report-btn:hover{border-color:var(--amber);color:var(--amber);background:var(--adim);}
+.report-btn-dot{width:5px;height:5px;border-radius:50%;background:var(--amber);}
+
+/* ══ BODY ══ */
+.body-row{display:flex;flex:1;overflow:hidden;min-height:0;}
+
+/* ══ LEFT SIDEBAR ══ */
+.icon-sidebar{
+  width:var(--sidebar-w);min-width:var(--sidebar-w);flex-shrink:0;
+  background:var(--bg1);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;
+  padding:10px 0;gap:4px;z-index:10;
+}
+.sb-icon{
+  width:34px;height:34px;border-radius:8px;
+  border:1px solid transparent;background:none;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:15px;transition:all .15s;position:relative;
+}
+.sb-icon:hover{background:var(--bg3);border-color:var(--border2);}
+.sb-icon.active{background:var(--gdim);border-color:var(--gbrd);}
+.sb-divider{width:24px;height:1px;background:var(--border);margin:4px 0;}
+.sb-icon .tooltip{
+  position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);
+  background:var(--bg2);border:1px solid var(--border2);border-radius:6px;
+  padding:4px 10px;font-family:var(--mono);font-size:10px;color:var(--text1);
+  white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s;z-index:50;
+}
+.sb-icon:hover .tooltip{opacity:1;}
+
+/* ══ MAIN AREA ══ */
+.main-area{display:flex;flex:1;overflow:hidden;min-width:0;}
+
+/* ── DataGrid column ── */
+.datagrid-col{display:flex;flex-direction:column;overflow:hidden;min-width:360px;flex:1;}
+.ctx-bar{
+  height:40px;min-height:40px;flex-shrink:0;
+  background:var(--bg1);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 14px;gap:7px;
+}
+.ctx-tag{font-family:var(--mono);font-size:10px;color:var(--green);background:var(--gdim);border:1px solid var(--gbrd);padding:2px 7px;border-radius:4px;}
+.ctx-lbl{font-family:var(--mono);font-size:10px;color:var(--text3);}
+.ctx-sep{width:1px;height:16px;background:var(--border);margin:0 2px;}
+.cbtn{font-family:var(--mono);font-size:10px;padding:4px 9px;border-radius:5px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:4px;}
+.cbtn:hover{border-color:var(--green);color:var(--green);background:var(--gdim);}
+.cbtn.p:hover{border-color:var(--purple);color:var(--purple);background:var(--pdim);}
+.cbtn.a:hover{border-color:var(--amber);color:var(--amber);background:var(--adim);}
+.ctx-spacer{flex:1;}
+.ctx-hint{font-family:var(--mono);font-size:9px;color:var(--text3);opacity:.6;}
+
+.grid-wrap{flex:1;overflow:auto;min-height:0;}
+.grid{width:max-content;min-width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11.5px;}
+.grid th{position:sticky;top:0;z-index:5;background:var(--bg2);padding:0;border-bottom:1px solid var(--border);font-weight:500;text-align:left;user-select:none;}
+.th-in{display:flex;align-items:center;gap:6px;padding:8px 14px;cursor:pointer;transition:background .12s;min-width:120px;}
+.th-in:hover{background:var(--bg3);}
+.th-nm{color:var(--text2);white-space:nowrap;}
+.th-tp{font-size:9px;color:var(--text3);padding:1px 5px;border-radius:3px;background:var(--bg0);border:1px solid var(--border);}
+.th-so{font-size:8px;color:var(--text3);margin-left:auto;opacity:0;transition:opacity .12s;}
+.th-in:hover .th-so,.th-in.sorted .th-so{opacity:1;}
+.th-in.sorted .th-so{color:var(--green);}
+.th-in.sel{background:rgba(62,255,160,.06);}
+.th-in.sel .th-nm{color:var(--green);}
+.grid .rn{position:sticky;left:0;z-index:3;background:var(--bg2);color:var(--text3);font-size:10px;padding:6px 10px;text-align:right;min-width:46px;border-right:1px solid var(--border);user-select:none;}
+.grid th.rnh{position:sticky;left:0;top:0;z-index:6;background:var(--bg2);min-width:46px;border-right:1px solid var(--border);}
+.grid td{padding:5px 14px;border-bottom:1px solid var(--border);color:var(--text2);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;transition:background .06s;}
+.grid tr:hover td{background:var(--bg2);}
+.grid td.num{color:var(--green);text-align:right;}
+.grid td.dt{color:var(--blue);}
+.grid td.nul{color:var(--text3);font-style:italic;}
+.grid td.sel{background:rgba(62,255,160,.03);}
+.footer{height:27px;min-height:27px;flex-shrink:0;background:var(--bg2);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:14px;font-family:var(--mono);font-size:10px;color:var(--text3);}
+.fv{color:var(--text2);margin-left:3px;}
+.fv.g{color:var(--green);}
+
+/* Schema first-load */
+.schema-firstload{flex:1;display:flex;flex-direction:column;overflow:hidden;animation:gridReveal .35s ease-out;}
+.sf-header{padding:20px 24px 12px;flex-shrink:0;border-bottom:1px solid var(--border);background:var(--bg1);}
+.sf-title{font-family:var(--mono);font-size:15px;color:var(--text1);margin-bottom:4px;}
+.sf-sub{font-family:var(--mono);font-size:11px;color:var(--text3);}
+.sf-progress{display:flex;align-items:center;gap:10px;margin-top:12px;}
+.sf-prog-step{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;}
+.sf-prog-dot{width:8px;height:8px;border-radius:50%;background:var(--border2);}
+.sf-prog-dot.done{background:var(--green);}
+.sf-prog-dot.active{background:var(--amber);animation:pulse 1.2s infinite;}
+.sf-prog-arrow{color:var(--text3);font-size:10px;}
+.sf-body{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:14px;}
+.sf-section-label{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;display:flex;align-items:center;gap:7px;}
+.sf-section-label.warn{color:var(--red);}
+.sf-section-label.ok{color:var(--green);}
+.sf-section-label.info{color:var(--amber);}
+.bi-card{border-radius:8px;border:1px solid var(--rbrd);background:var(--rdim);padding:12px 14px;display:flex;flex-direction:column;gap:8px;}
+.bi-card.resolved{border-color:var(--gbrd);background:var(--gdim);}
+.bi-head{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11.5px;}
+.bi-col{color:var(--text1);}
+.bi-badge{font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid var(--rbrd);color:var(--red);}
+.bi-card.resolved .bi-badge{border-color:var(--gbrd);color:var(--green);}
+.bi-desc{font-size:12px;color:var(--text2);line-height:1.5;}
+.bi-samples{font-family:var(--mono);font-size:10.5px;color:var(--text3);}
+.s-ok{color:var(--green);}
+.s-bad{color:var(--red);}
+.opts{display:flex;gap:6px;flex-wrap:wrap;}
+.opt{font-family:var(--mono);font-size:10.5px;padding:6px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;transition:all .15s;}
+.opt:hover,.opt.on{border-color:var(--green);color:var(--green);background:var(--gdim);}
+.auto-row{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;padding:4px 0;}
+.auto-check{color:var(--green);font-size:10px;}
+.auto-col{color:var(--text1);}
+.auto-arr{color:var(--text3);font-size:10px;}
+.auto-to{color:var(--green);}
+.warn-row{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;padding:4px 0;}
+.sf-footer{padding:14px 24px;border-top:1px solid var(--border);background:var(--bg1);flex-shrink:0;display:flex;align-items:center;gap:12px;}
+.sf-status{font-family:var(--mono);font-size:11px;color:var(--text3);flex:1;}
+.sf-status.ready{color:var(--green);}
+.confirm-btn{padding:10px 22px;background:var(--green);border:none;border-radius:8px;font-family:var(--mono);font-size:12px;color:#060f09;cursor:pointer;font-weight:600;transition:opacity .15s;}
+.confirm-btn:hover{opacity:.87;}
+.confirm-btn:disabled{opacity:.35;cursor:not-allowed;}
+
+/* ══ RESULTS PANEL ══ */
+.results-panel{display:flex;flex-direction:column;overflow:hidden;background:var(--bg0);min-width:280px;flex-shrink:0;}
+.res-tabs{display:flex;border-bottom:1px solid var(--border);padding:0 12px;flex-shrink:0;align-items:center;}
+.res-tab{padding:11px 10px 10px;font-family:var(--mono);font-size:11px;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s;white-space:nowrap;display:flex;align-items:center;gap:4px;}
+.res-tab:hover{color:var(--text2);}
+.res-tab.on{color:var(--green);border-bottom-color:var(--green);}
+.tb{font-family:var(--mono);font-size:9px;padding:1px 4px;border-radius:3px;background:var(--bg3);color:var(--text3);}
+.res-tab.on .tb{background:var(--gdim);color:var(--green);}
+.res-body{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:0;}
+.tab-pane{flex:1;display:flex;flex-direction:column;overflow-y:auto;}
+
+/* ── Schema tab — clean column dictionary ── */
+.schema-col-list{display:flex;flex-direction:column;gap:1px;padding:8px;}
+.scol{
+  display:flex;align-items:center;gap:0;
+  border-radius:6px;overflow:hidden;
+  border:1px solid transparent;
+  transition:background .12s, border-color .12s;
+  cursor:default;
+}
+.scol:hover{background:var(--bg2);border-color:var(--border);}
+/* col name */
+.scol-nm{
+  font-family:var(--mono);font-size:11px;color:var(--text1);
+  padding:7px 10px;min-width:110px;flex-shrink:0;
+}
+/* type badge */
+.scol-tp{
+  font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:3px;
+  border:1px solid var(--border2);color:var(--text3);white-space:nowrap;
+  flex-shrink:0;
+}
+.scol-tp.n{border-color:var(--gbrd);color:var(--green);background:var(--gdim);}
+.scol-tp.d{border-color:var(--bbrd);color:var(--blue);background:var(--bdim);}
+/* null bar */
+.scol-null{
+  display:flex;align-items:center;gap:5px;
+  padding:0 10px;margin-left:auto;flex-shrink:0;
+}
+.nb{width:36px;height:3px;border-radius:2px;background:var(--bg0);overflow:hidden;}
+.nb-fill{height:100%;border-radius:2px;background:var(--amber);}
+.npct{font-family:var(--mono);font-size:9px;color:var(--text3);min-width:26px;text-align:right;}
+/* sample values — shown on hover via parent */
+.scol-sample{
+  font-family:var(--mono);font-size:9px;color:var(--text3);
+  padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  flex:1;min-width:0;
+}
+/* null warning colour */
+.npct.warn{color:var(--amber);}
+
+/* ── Queries tab — SQL + chart together ── */
+.qlist{display:flex;flex-direction:column;gap:6px;padding:8px;}
+.qcard{
+  border-radius:8px;border:1px solid var(--border);
+  background:var(--bg1);overflow:hidden;transition:border-color .15s;
+}
+.qcard.open{border-color:var(--border2);}
+.qcard-head{
+  display:flex;align-items:center;gap:8px;
+  padding:9px 12px;cursor:pointer;transition:background .12s;
+}
+.qcard-head:hover{background:var(--bg2);}
+.q-num{font-family:var(--mono);font-size:10px;color:var(--text3);}
+.q-name{font-family:var(--mono);font-size:11px;color:var(--text1);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.q-tag{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid var(--border2);color:var(--text3);}
+.q-tag.s{border-color:var(--gbrd);color:var(--green);background:var(--gdim);}
+.q-tag.a{border-color:var(--abrd);color:var(--amber);background:var(--adim);}
+.q-tag.p{border-color:var(--pbrd);color:var(--purple);background:var(--pdim);}
+.q-time{font-family:var(--mono);font-size:9px;color:var(--text3);}
+.q-arr{font-size:8px;color:var(--text3);transition:transform .2s;flex-shrink:0;}
+.qcard-body{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--border);}
+
+/* SQL block inside query card */
+.q-sql-wrap{padding:10px 12px;border-bottom:1px solid var(--border);}
+.q-sql-head{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+.q-sql-label{font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;flex:1;}
+.q-sql-copy{font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:3px;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer;transition:all .12s;}
+.q-sql-copy:hover{border-color:var(--green);color:var(--green);}
+.q-sql-rows{font-family:var(--mono);font-size:9px;color:var(--text3);}
+.q-pre{
+  font-family:var(--mono);font-size:10.5px;color:var(--text2);
+  background:var(--bg0);border:1px solid var(--border);border-radius:5px;
+  padding:8px 10px;line-height:1.55;white-space:pre-wrap;word-break:break-all;
+  max-height:140px;overflow-y:auto;margin:0;
+}
+
+/* Chart block inside query card */
+.q-chart-wrap{padding:10px 12px;}
+.q-chart-head{display:flex;align-items:center;gap:5px;margin-bottom:8px;}
+.q-chart-label{font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;flex:1;}
+.q-chart-types{display:flex;gap:3px;}
+.qtybtn{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer;transition:all .12s;}
+.qtybtn.on{border-color:var(--green);color:var(--green);background:var(--gdim);}
+.q-expand{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:3px;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer;transition:all .12s;}
+.q-expand:hover{border-color:var(--green);color:var(--green);}
+.q-chart-dl{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer;transition:all .12s;}
+.q-chart-dl:hover{border-color:var(--text3);color:var(--text2);}
+/* mini bar chart */
+.q-bars{
+  width:100%;height:110px;
+  background:var(--bg0);border:1px solid var(--border);border-radius:5px;
+  display:flex;align-items:flex-end;padding:10px 10px 24px;gap:4px;position:relative;
+}
+.q-bar{border-radius:2px 2px 0 0;flex:1;cursor:pointer;transition:opacity .15s;}
+.q-bar:hover{opacity:.72;}
+.q-xaxis{position:absolute;bottom:6px;left:10px;right:10px;display:flex;justify-content:space-around;}
+.q-xl{font-family:var(--mono);font-size:8px;color:var(--text3);}
+/* no-chart placeholder */
+.q-no-chart{
+  width:100%;height:70px;background:var(--bg0);border:1px dashed var(--border);
+  border-radius:5px;display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:10px;color:var(--text3);gap:5px;
+}
+
+/* ══ RESIZER ══ */
+.resizer{width:5px;min-width:5px;flex-shrink:0;background:transparent;cursor:col-resize;position:relative;z-index:20;border-left:1px solid var(--border);transition:border-color .15s;}
+.resizer::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:3px;height:28px;border-radius:3px;background:transparent;transition:background .15s,height .15s;}
+.resizer:hover::after,.resizer.drag::after{background:var(--green);height:44px;}
+.resizer:hover,.resizer.drag{border-left-color:var(--green);}
+body.resizing{cursor:col-resize!important;user-select:none;}
+body.resizing *{pointer-events:none!important;}
+body.resizing .resizer{pointer-events:auto!important;}
+
+/* ══ PROJECTS MODAL ══ */
+.modal-overlay{
+  position:fixed;inset:0;z-index:200;
+  background:rgba(9,9,11,.75);backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;
+  animation:fadeIn .15s ease-out;padding:24px;
+}
+.proj-modal{
+  width:min(800px,96vw);max-height:min(600px,90vh);
+  background:var(--bg1);border:1px solid var(--border2);border-radius:14px;
+  display:flex;flex-direction:column;overflow:hidden;
+  animation:scaleIn .2s ease-out;box-shadow:0 32px 80px rgba(0,0,0,.6);
+}
+.proj-modal-head{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.proj-modal-title{font-family:var(--mono);font-size:13px;color:var(--text1);flex:1;font-weight:500;}
+.proj-modal-search{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border2);border-radius:7px;padding:5px 10px;transition:border-color .15s;}
+.proj-modal-search:focus-within{border-color:var(--green);}
+.proj-modal-search input{background:none;border:none;outline:none;font-family:var(--mono);font-size:11px;color:var(--text1);width:180px;}
+.proj-modal-search input::placeholder{color:var(--text3);}
+.proj-modal-search span{font-size:11px;color:var(--text3);}
+.modal-close{width:28px;height:28px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);color:var(--text3);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.modal-close:hover{border-color:var(--red);color:var(--red);background:var(--rdim);}
+.proj-modal-body{flex:1;overflow-y:auto;padding:16px 20px;}
+.proj-sec-label{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);padding:0 2px 8px;}
+.proj-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;}
+.proj-new-card{display:flex;align-items:center;justify-content:center;gap:10px;padding:20px 14px;border:1.5px dashed var(--border2);border-radius:10px;cursor:pointer;transition:all .15s;background:none;width:100%;font-family:var(--mono);font-size:11px;color:var(--text3);grid-column:1/-1;}
+.proj-new-card:hover{border-color:var(--green);color:var(--green);background:var(--gdim);}
+.proj-card{display:flex;border-radius:10px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;overflow:hidden;transition:all .18s;position:relative;}
+.proj-card:hover{border-color:var(--border2);background:var(--bg3);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.4);}
+.proj-card.active-proj{border-color:var(--gbrd);box-shadow:0 0 0 1px var(--gbrd);}
+.proj-stripe{width:4px;flex-shrink:0;background:var(--border2);}
+.proj-card.active-proj .proj-stripe{background:var(--green);}
+.proj-body{flex:1;padding:13px 13px 11px;display:flex;flex-direction:column;gap:5px;min-width:0;}
+.proj-name{font-family:var(--mono);font-size:12px;color:var(--text1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.proj-card.active-proj .proj-name{color:var(--green);}
+.proj-active-badge{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:8.5px;color:var(--green);background:var(--gdim);border:1px solid var(--gbrd);padding:1px 6px;border-radius:3px;margin-bottom:2px;width:fit-content;}
+.proj-meta{display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+.proj-ds{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid var(--border2);color:var(--text3);background:var(--bg3);}
+.proj-card.active-proj .proj-ds{border-color:var(--gbrd);color:var(--green);background:var(--gdim);}
+.proj-stats{display:flex;gap:8px;font-family:var(--mono);font-size:9px;color:var(--text3);}
+.proj-stats span{color:var(--text2);}
+.proj-time{font-family:var(--mono);font-size:9px;color:var(--text3);}
+.proj-thumb{width:60px;flex-shrink:0;display:flex;align-items:flex-end;gap:2px;padding:12px 10px 14px;}
+.proj-bar{border-radius:2px 2px 0 0;flex:1;}
+
+/* Schema modal — left panel */
+.modal-overlay.schema-overlay{align-items:stretch;justify-content:flex-start;}
+.schema-panel{width:440px;max-width:90vw;background:var(--bg1);border-right:1px solid var(--border2);display:flex;flex-direction:column;overflow:hidden;animation:slideInLeft .2s ease-out;box-shadow:8px 0 40px rgba(0,0,0,.4);}
+.schema-panel .modal-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.schema-panel .modal-title{font-family:var(--mono);font-size:13px;color:var(--text1);flex:1;}
+.schema-panel .modal-body{flex:1;overflow-y:auto;padding:14px;}
+.schema-modal-section{border-bottom:1px solid var(--border);padding:12px 2px;}
+.sm-label{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:9px;display:flex;align-items:center;gap:6px;}
+.sm-label.w{color:var(--red);}
+.sm-label.ok{color:var(--green);}
+.sm-label.i{color:var(--amber);}
+
+/* ── Report overlay ── */
+.report-overlay{
+  position:fixed;inset:0;z-index:250;
+  background:rgba(9,9,11,.8);backdrop-filter:blur(5px);
+  display:flex;justify-content:flex-end;
+  animation:fadeIn .15s ease-out;
+}
+.report-drawer{
+  width:min(520px,90vw);height:100%;
+  background:var(--bg1);border-left:1px solid var(--border2);
+  display:flex;flex-direction:column;overflow:hidden;
+  animation:slideInLeft .2s ease-out;
+  box-shadow:-8px 0 40px rgba(0,0,0,.4);
+}
+/* reuse rpt-* styles from before */
+.rpt-header{display:flex;align-items:flex-start;gap:10px;padding:14px 16px 12px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.rpt-title{font-family:var(--mono);font-size:13px;color:var(--text1);flex:1;font-weight:500;}
+.rpt-meta{font-family:var(--mono);font-size:9px;color:var(--text3);margin-top:3px;}
+.rpt-dl{font-family:var(--mono);font-size:9.5px;padding:4px 10px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer;transition:all .12s;white-space:nowrap;}
+.rpt-dl:hover{border-color:var(--green);color:var(--green);}
+.rpt-close{width:28px;height:28px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);color:var(--text3);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.rpt-close:hover{border-color:var(--red);color:var(--red);background:var(--rdim);}
+.rpt-sections{flex:1;overflow-y:auto;}
+.rpt-section{border-bottom:1px solid var(--border);}
+.rpt-sec-head{display:flex;align-items:center;gap:7px;padding:11px 16px;cursor:pointer;transition:background .12s;}
+.rpt-sec-head:hover{background:var(--bg2);}
+.rpt-num{font-family:var(--mono);font-size:10px;color:var(--text3);}
+.rpt-sec-title{font-family:var(--mono);font-size:11.5px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rpt-sec-head.open .rpt-sec-title{color:var(--text1);}
+.rpt-time{font-family:var(--mono);font-size:9px;color:var(--text3);}
+.rpt-star{background:none;border:none;cursor:pointer;font-size:12px;color:var(--text3);padding:0 2px;transition:color .12s;}
+.rpt-star:hover,.rpt-star.on{color:var(--amber);}
+.rpt-arr{font-size:8px;color:var(--text3);transition:transform .2s;flex-shrink:0;}
+.rpt-sec-head.open .rpt-arr{transform:rotate(90deg);}
+.rpt-body{padding:0 16px 14px;display:flex;flex-direction:column;gap:10px;}
+.rpt-mini-chart{width:100%;height:120px;background:var(--bg0);border:1px solid var(--border);border-radius:6px;display:flex;align-items:flex-end;padding:10px 12px 22px;gap:4px;position:relative;}
+.rpt-mini-bar{border-radius:2px 2px 0 0;flex:1;}
+.rpt-mini-xl{position:absolute;bottom:6px;left:12px;right:12px;display:flex;justify-content:space-around;}
+.rpt-mini-xl span{font-family:var(--mono);font-size:8px;color:var(--text3);}
+.rpt-conclusion{font-size:12.5px;color:var(--text1);line-height:1.75;}
+.rpt-evidence{border-radius:7px;border:1px solid var(--abrd);background:var(--adim);overflow:hidden;}
+.rpt-ev-head{display:flex;align-items:center;gap:7px;padding:8px 11px;cursor:pointer;user-select:none;}
+.rpt-ev-title{font-family:var(--mono);font-size:11px;color:var(--amber);font-weight:500;}
+.rpt-ev-count{font-family:var(--mono);font-size:9px;color:var(--text3);flex:1;}
+.rpt-ev-body{padding:0 11px 9px;display:flex;flex-direction:column;gap:5px;}
+.rpt-ev-row{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10.5px;}
+.rpt-ev-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;background:var(--border2);}
+.rpt-ev-row.sig .rpt-ev-dot{background:var(--green);}
+.rpt-ev-key{color:var(--text2);flex:1;}
+.rpt-ev-val{color:var(--text3);}
+.rpt-ev-row.sig .rpt-ev-val{color:var(--green);font-weight:500;}
+.rpt-ev-sep{height:1px;background:var(--border);margin:3px 0;}
+.rpt-anomaly{font-family:var(--mono);font-size:10px;color:var(--amber);display:flex;gap:5px;align-items:center;}
+.rpt-sql-toggle{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-family:var(--mono);font-size:10px;color:var(--text3);transition:all .12s;user-select:none;}
+.rpt-sql-toggle:hover{border-color:var(--text3);}
+.rpt-sql-block{background:var(--bg2);border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-top:4px;}
+.rpt-sql-hd{font-family:var(--mono);font-size:9px;color:var(--text3);padding:4px 10px;border-bottom:1px solid var(--border);}
+.rpt-sql-pre{font-family:var(--mono);font-size:10.5px;color:var(--text2);padding:8px 12px;margin:0;white-space:pre-wrap;word-break:break-all;max-height:130px;overflow-y:auto;line-height:1.55;}
+.rpt-sec-foot{display:flex;justify-content:flex-end;}
+.rpt-exp-sec{font-family:var(--mono);font-size:9px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer;transition:all .12s;}
+.rpt-exp-sec:hover{border-color:var(--text3);color:var(--text2);}
+
+/* ── Inline Chat ── */
+.chat-col{width:300px;min-width:260px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg1);border-right:1px solid var(--border);animation:slideInLeft .2s ease-out;position:relative;}
+.chat-col-head{height:40px;min-height:40px;flex-shrink:0;display:flex;align-items:center;padding:0 10px;gap:6px;border-bottom:1px solid var(--border);background:var(--bg2);}
+.chat-col-session{font-family:var(--mono);font-size:10.5px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.chat-col-session em{color:var(--green);font-style:normal;}
+.chat-hd-btn{width:24px;height:24px;border-radius:5px;border:1px solid var(--border2);background:var(--bg3);color:var(--text3);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .12s;flex-shrink:0;}
+.chat-hd-btn:hover{background:var(--bg2);border-color:var(--green);color:var(--green);}
+.chat-hd-btn.close-btn:hover{border-color:var(--red);color:var(--red);background:var(--rdim);}
+.session-drawer{position:absolute;inset:0;z-index:10;background:var(--bg1);display:flex;flex-direction:column;overflow:hidden;animation:slideUp .18s ease-out;}
+.session-drawer-head{height:40px;min-height:40px;flex-shrink:0;display:flex;align-items:center;padding:0 10px;gap:8px;border-bottom:1px solid var(--border);background:var(--bg2);}
+.session-drawer-title{font-family:var(--mono);font-size:11px;color:var(--text2);flex:1;}
+.session-list{flex:1;overflow-y:auto;padding:8px;}
+.sess-new{display:flex;align-items:center;gap:8px;width:100%;padding:9px 12px;margin-bottom:6px;border:1.5px dashed var(--border2);border-radius:8px;background:none;cursor:pointer;transition:all .15s;font-family:var(--mono);font-size:11px;color:var(--text3);}
+.sess-new:hover{border-color:var(--green);color:var(--green);background:var(--gdim);}
+.sess-new-icon{font-size:14px;}
+.sess-sec{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);padding:8px 4px 4px;}
+.sess-item{display:flex;border-radius:8px;border:1px solid transparent;cursor:pointer;padding:9px 10px;transition:all .12s;margin-bottom:2px;align-items:flex-start;gap:8px;}
+.sess-item:hover{background:var(--bg2);border-color:var(--border);}
+.sess-item.active-sess{background:var(--bg2);border-color:var(--gbrd);}
+.sess-dot{width:6px;height:6px;border-radius:50%;background:var(--border2);flex-shrink:0;margin-top:4px;}
+.sess-item.active-sess .sess-dot{background:var(--green);}
+.sess-body{flex:1;min-width:0;}
+.sess-name{font-family:var(--mono);font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sess-item.active-sess .sess-name{color:var(--text1);}
+.sess-meta{display:flex;gap:6px;margin-top:2px;font-family:var(--mono);font-size:9px;color:var(--text3);}
+.sess-preview{font-size:10.5px;color:var(--text3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-style:italic;}
+.sess-time{margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--text3);flex-shrink:0;}
+.chat-messages{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:2px;}
+.cm-msg-user{display:flex;justify-content:flex-end;margin:3px 0;}
+.cm-bubble{max-width:80%;padding:7px 11px;border-radius:12px 12px 3px 12px;background:var(--bg3);border:1px solid var(--border2);font-size:12px;color:var(--text1);line-height:1.45;}
+.cm-msg-analyst{display:flex;gap:7px;align-items:flex-start;margin:5px 0;}
+.cm-avatar{width:20px;height:20px;border-radius:4px;flex-shrink:0;margin-top:2px;background:var(--gdim);border:1px solid var(--gbrd);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:8px;color:var(--green);}
+.cm-text{font-size:12px;color:var(--text1);line-height:1.55;flex:1;}
+.cm-time{font-family:var(--mono);font-size:9px;color:var(--text3);margin-top:2px;}
+.cm-sql-toggle{display:inline-flex;align-items:center;gap:5px;margin-top:5px;font-family:var(--mono);font-size:9.5px;color:var(--text3);cursor:pointer;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);transition:all .12s;}
+.cm-sql-toggle:hover{border-color:var(--green);color:var(--green);}
+.chat-input-area{flex-shrink:0;border-top:1px solid var(--border);background:var(--bg1);padding:8px 10px;display:flex;flex-direction:column;gap:6px;}
+.chat-hints{display:flex;gap:4px;flex-wrap:wrap;}
+.hint{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:16px;border:1px solid var(--border2);background:var(--bg0);color:var(--text3);cursor:pointer;transition:all .15s;}
+.hint:hover{border-color:var(--green);color:var(--green);}
+.chat-input-row{display:flex;align-items:flex-end;gap:7px;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:8px 10px;transition:border-color .15s;}
+.chat-input-row:focus-within{border-color:var(--green);}
+.chat-ta{flex:1;background:none;border:none;outline:none;font-family:var(--sans);font-size:12.5px;color:var(--text1);resize:none;min-height:20px;max-height:160px;line-height:1.45;overflow-y:auto;}
+.chat-ta::placeholder{color:var(--text3);}
+.chat-send{width:27px;height:27px;border-radius:7px;background:var(--green);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .15s,transform .1s;flex-shrink:0;}
+.chat-send:hover{opacity:.85;transform:scale(.96);}
+.chat-send svg{width:12px;height:12px;fill:none;stroke:#060f09;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+
+/* chart fullscreen */
+.chart-overlay{position:fixed;inset:0;z-index:300;background:rgba(9,9,11,.92);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:fadeIn .15s ease-out;}
+.chart-overlay-card{width:min(1000px,94vw);max-height:92vh;background:var(--bg1);border:1px solid var(--border2);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;animation:scaleIn .18s ease-out;}
+.co-head{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.co-title{font-family:var(--mono);font-size:13px;color:var(--text1);flex:1;}
+.co-close{width:30px;height:30px;border-radius:7px;border:1px solid var(--border2);background:var(--bg3);color:var(--text3);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.co-close:hover{border-color:var(--red);color:var(--red);background:var(--rdim);}
+.co-body{flex:1;padding:24px 28px;overflow:auto;}
+.big-bars{display:flex;align-items:flex-end;gap:8px;height:340px;}
+.bbr{flex:1;border-radius:5px 5px 0 0;cursor:pointer;transition:opacity .15s;}
+.bbr:hover{opacity:.75;}
+.big-lbls{display:flex;gap:8px;margin-top:10px;}
+.bbrl{flex:1;font-family:var(--mono);font-size:10px;color:var(--text3);text-align:center;}
+.co-foot{padding:12px 28px 16px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-shrink:0;}
+.co-stat{font-family:var(--mono);font-size:11px;color:var(--text3);}
+.co-stat span{color:var(--text1);margin-left:3px;}
+.co-dl{margin-left:auto;font-family:var(--mono);font-size:10px;padding:5px 12px;border-radius:5px;border:1px solid var(--border2);background:var(--bg2);color:var(--text2);cursor:pointer;transition:all .15s;}
+.co-dl:hover{border-color:var(--green);color:var(--green);}
+
+/* right-click menu */
+.ctx-menu{position:fixed;z-index:400;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:4px 0;min-width:185px;box-shadow:0 8px 32px rgba(0,0,0,.5);animation:slideUp .12s ease-out;}
+.cm{display:flex;align-items:center;gap:8px;padding:7px 13px;cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--text2);transition:all .08s;}
+.cm:hover{background:var(--bg3);color:var(--text1);}
+.cm .ico{width:15px;text-align:center;}
+.cm-sep{height:1px;background:var(--border);margin:3px 8px;}
+.cm.g:hover{color:var(--green);}
+.cm.r:hover{color:var(--red);}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ══ TOPBAR ══ -->
+  <div class="topbar">
+    <div class="proj-switcher" onclick="openProjectsModal()">
+      <div class="proj-sw-logo"><em>analyst</em></div>
+      <div class="proj-sw-sep"></div>
+      <span class="proj-sw-name">Q4 Sales Performance</span>
+      <span class="proj-sw-arrow">▾</span>
+    </div>
+
+    <div class="topbar-main">
+      <div class="ds-chips">
+        <div class="ds-chip">
+          <div class="ds-chip-main">
+            <div class="ds-toggle"><div class="ds-dot"></div></div>
+            <span style="color:var(--green)">sales_2024.csv</span>
+            <span style="color:var(--text3);font-size:10px">· 12,847</span>
+          </div>
+          <button class="ds-chip-gear" onclick="openSchemaModal(this,'sales_2024.csv')" title="Schema setup">⚙</button>
+        </div>
+        <div class="ds-chip blue">
+          <div class="ds-chip-main">
+            <div class="ds-toggle"><div class="ds-dot"></div></div>
+            <span style="color:var(--blue)">customers.xlsx</span>
+            <span style="color:var(--text3);font-size:10px">· 3,201</span>
+          </div>
+          <button class="ds-chip-gear" onclick="openSchemaModal(this,'customers.xlsx')" title="Schema setup">⚙</button>
+        </div>
+        <button class="add-btn">+ add</button>
+      </div>
+
+      <div class="topbar-right">
+        <!-- Report moved here as a dedicated action button -->
+        <button class="report-btn" onclick="openReport()">
+          <div class="report-btn-dot"></div>
+          report <span style="color:var(--text3);font-size:9px">· 2</span>
+        </button>
+        <div class="agent-badge"><div class="pulse-dot"></div>4 agents ready</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ BODY ══ -->
+  <div class="body-row">
+
+    <!-- Sidebar — workspace tools only -->
+    <div class="icon-sidebar">
+      <div class="sb-icon" id="sb-chat" onclick="toggleChat()">
+        <span>💬</span>
+        <div class="tooltip">Chat</div>
+      </div>
+      <div class="sb-divider"></div>
+      <div class="sb-icon" style="opacity:.3;cursor:default">
+        <span>🔗</span>
+        <div class="tooltip">Join Graph (soon)</div>
+      </div>
+      <div class="sb-icon" style="opacity:.3;cursor:default">
+        <span>📋</span>
+        <div class="tooltip">Templates (soon)</div>
+      </div>
+    </div>
+
+    <div class="main-area">
+
+      <!-- Chat Column -->
+      <div class="chat-col" id="chatCol" style="display:none;">
+        <div class="chat-col-head">
+          <span class="chat-col-session">💬 <em>What is this dataset about?</em> · 09:12</span>
+          <button class="chat-hd-btn" onclick="openSessionDrawer()" title="Session history">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+              <circle cx="7" cy="7" r="5.5"/><path d="M7 4.5V7l2 1.5"/>
+            </svg>
+          </button>
+          <button class="chat-hd-btn close-btn" onclick="toggleChat()">✕</button>
+        </div>
+        <div class="session-drawer" id="sessionDrawer" style="display:none;">
+          <div class="session-drawer-head">
+            <span class="session-drawer-title">Sessions · sales_2024.csv</span>
+            <button class="chat-hd-btn close-btn" onclick="closeSessionDrawer()">✕</button>
+          </div>
+          <div class="session-list">
+            <button class="sess-new" onclick="newSession()"><span class="sess-new-icon">＋</span><span>New Session</span><span style="margin-left:auto;font-size:9px;opacity:.5">clears context</span></button>
+            <div class="sess-sec">current</div>
+            <div class="sess-item active-sess" onclick="switchSession(this,'What is this dataset about?')">
+              <div class="sess-dot"></div>
+              <div class="sess-body">
+                <div class="sess-name">What is this dataset about?</div>
+                <div class="sess-meta"><span>3 messages</span><span>·</span><span>2 queries</span></div>
+                <div class="sess-preview">↳ Any anomalies in revenue?</div>
+              </div>
+              <span class="sess-time">09:12</span>
+            </div>
+            <div class="sess-sec">earlier today</div>
+            <div class="sess-item" onclick="switchSession(this,'Revenue distribution by region')">
+              <div class="sess-dot"></div>
+              <div class="sess-body">
+                <div class="sess-name">Revenue distribution by region</div>
+                <div class="sess-meta"><span>11 messages</span><span>·</span><span>7 queries</span></div>
+                <div class="sess-preview">↳ Run regression: quantity vs revenue</div>
+              </div>
+              <span class="sess-time">08:40</span>
+            </div>
+          </div>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+          <div class="cm-msg-user"><div class="cm-bubble">What is this dataset about?</div></div>
+          <div class="cm-msg-analyst">
+            <div class="cm-avatar">A</div>
+            <div>
+              <div class="cm-text">This dataset contains 12,847 sales transactions from 2024, covering 4 regions, 5 product types, 3 channels. Key metrics: revenue, cost, quantity, profit margin, and discount rates.</div>
+              <div class="cm-time">09:14</div>
+            </div>
+          </div>
+          <div class="cm-msg-user"><div class="cm-bubble">Revenue distribution by region</div></div>
+          <div class="cm-msg-analyst">
+            <div class="cm-avatar">A</div>
+            <div>
+              <div class="cm-text">East leads with $4.2M (32.7%), West $3.1M (24.1%), Central $2.8M (21.8%), South $2.7M (21.4%). The East–South gap is statistically significant (p &lt; 0.01).</div>
+              <span class="cm-sql-toggle">▶ SQL · 1 query</span>
+              <div class="cm-time">09:17</div>
+            </div>
+          </div>
+          <div class="cm-msg-user"><div class="cm-bubble">Any anomalies in revenue?</div></div>
+          <div class="cm-msg-analyst">
+            <div class="cm-avatar">A</div>
+            <div>
+              <div class="cm-text">3 outliers detected above $50K (z-score &gt; 3.0): rows #847 ($52K), #2341 ($61K), #9102 ($58K). All wholesale transactions from East region.</div>
+              <span class="cm-sql-toggle">▶ SQL · 2 queries</span>
+              <div class="cm-time">09:22</div>
+            </div>
+          </div>
+        </div>
+        <div class="chat-input-area">
+          <div class="chat-hints">
+            <span class="hint" onclick="fillChatPanel(this)">Monthly trend</span>
+            <span class="hint" onclick="fillChatPanel(this)">Online vs offline</span>
+            <span class="hint" onclick="fillChatPanel(this)">Run regression</span>
+          </div>
+          <div class="chat-input-row">
+            <textarea class="chat-ta" id="chatTA" rows="1" placeholder="Ask a question about your data…" oninput="autoResizeTA(this)" onfocus="autoResizeTA(this)"></textarea>
+            <button class="chat-send"><svg viewBox="0 0 14 14"><path d="M2 7h10M7 2l5 5-5 5"/></svg></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="resizer" id="chatResizer" style="display:none;"></div>
+
+      <!-- DataGrid Column -->
+      <div class="datagrid-col" id="datagridCol">
+
+        <!-- Schema first-load -->
+        <div class="schema-firstload" id="schemaFirstload">
+          <div class="sf-header">
+            <div class="sf-title">📂 sales_2024.csv — schema review</div>
+            <div class="sf-sub">12,847 rows · 10 columns · 842 KB · Resolve issues below before starting analysis</div>
+            <div class="sf-progress">
+              <div class="sf-prog-step"><div class="sf-prog-dot done"></div><span style="color:var(--green)">Upload</span></div>
+              <div class="sf-prog-arrow">→</div>
+              <div class="sf-prog-step"><div class="sf-prog-dot active"></div><span style="color:var(--amber)">Review</span></div>
+              <div class="sf-prog-arrow">→</div>
+              <div class="sf-prog-step"><div class="sf-prog-dot"></div><span>Analyze</span></div>
+            </div>
+          </div>
+          <div class="sf-body">
+            <div>
+              <div class="sf-section-label warn">⛔ must resolve — 2 columns ambiguous</div>
+              <div class="bi-card" id="bc1">
+                <div class="bi-head"><span class="bi-col">order_date</span><span class="bi-badge">VARCHAR → ?</span></div>
+                <div class="bi-desc">Mixed date formats — cannot auto-convert safely.</div>
+                <div class="bi-samples">samples: <span class="s-ok">"2024-01-15"</span> · <span class="s-bad">"Jan 15 2024"</span> · <span class="s-bad">"15/01/24"</span></div>
+                <div class="opts">
+                  <div class="opt on" onclick="pickOpt(this,'bc1')">● Parse as DATE</div>
+                  <div class="opt" onclick="pickOpt(this,'bc1')">Keep as text</div>
+                  <div class="opt" onclick="pickOpt(this,'bc1')">Exclude column</div>
+                </div>
+              </div>
+              <div class="bi-card" id="bc2">
+                <div class="bi-head"><span class="bi-col">revenue_usd</span><span class="bi-badge">VARCHAR → ?</span></div>
+                <div class="bi-desc">Currency symbols prevent numeric conversion.</div>
+                <div class="bi-samples">samples: <span class="s-ok">"1234.50"</span> · <span class="s-bad">"$8,920"</span> · <span class="s-bad">"1.2K"</span></div>
+                <div class="opts">
+                  <div class="opt" onclick="pickOpt(this,'bc2')">● Strip & parse DOUBLE</div>
+                  <div class="opt" onclick="pickOpt(this,'bc2')">Keep as text</div>
+                  <div class="opt" onclick="pickOpt(this,'bc2')">Exclude column</div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div class="sf-section-label info">⚠ data quality — will warn if used in analysis</div>
+              <div class="warn-row"><span style="color:var(--amber)">⚠</span><span style="font-family:var(--mono);font-size:11px;color:var(--text1)">discount_pct</span><span style="font-size:11px;color:var(--text2)">· 23% NULL values</span></div>
+              <div class="warn-row"><span style="color:var(--amber)">⚠</span><span style="font-family:var(--mono);font-size:11px;color:var(--text1)">cost</span><span style="font-size:11px;color:var(--text2)">· 1% NULL values</span></div>
+            </div>
+            <div>
+              <div class="sf-section-label ok">✓ auto-converted — 3 columns</div>
+              <div class="auto-row"><span class="auto-check">✓</span><span class="auto-col">quantity</span><span class="auto-arr">VARCHAR →</span><span class="auto-to">INTEGER</span></div>
+              <div class="auto-row"><span class="auto-check">✓</span><span class="auto-col">profit_margin</span><span class="auto-arr">VARCHAR →</span><span class="auto-to">DOUBLE</span></div>
+              <div class="auto-row"><span class="auto-check">✓</span><span class="auto-col">channel</span><span class="auto-arr">kept as</span><span class="auto-to">VARCHAR</span></div>
+            </div>
+          </div>
+          <div class="sf-footer">
+            <span class="sf-status" id="sfStatus">⛔ resolve 2 blocking issues to continue</span>
+            <button class="confirm-btn" id="confirmBtn" disabled onclick="doConfirm()">confirm & start analysis →</button>
+          </div>
+        </div>
+
+        <!-- DataGrid -->
+        <div id="gridSection" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+          <div class="ctx-bar">
+            <span class="ctx-lbl">selected:</span>
+            <span class="ctx-tag">region</span>
+            <span class="ctx-tag">revenue</span>
+            <div class="ctx-sep"></div>
+            <button class="cbtn">📊 bar chart</button>
+            <button class="cbtn">⬡ scatter</button>
+            <button class="cbtn p">⚖ compare</button>
+            <button class="cbtn a">📈 correlation</button>
+            <div class="ctx-spacer"></div>
+            <span class="ctx-hint">right-click column for more</span>
+          </div>
+          <div class="grid-wrap">
+            <table class="grid">
+              <thead><tr>
+                <th class="rnh"><div class="th-in" style="min-width:44px;justify-content:center;padding:8px 4px"><span style="color:var(--text3);font-size:9px">#</span></div></th>
+                <th><div class="th-in"><span class="th-nm">date</span><span class="th-tp">DATE</span><span class="th-so">↕</span></div></th>
+                <th><div class="th-in sel"><span class="th-nm">region</span><span class="th-tp">VARCHAR</span><span class="th-so">↕</span></div></th>
+                <th><div class="th-in"><span class="th-nm">product</span><span class="th-tp">VARCHAR</span><span class="th-so">↕</span></div></th>
+                <th><div class="th-in sel"><span class="th-nm">revenue</span><span class="th-tp">DOUBLE</span><span class="th-so">↕</span></div></th>
+                <th><div class="th-in sorted"><span class="th-nm">quantity</span><span class="th-tp">INTEGER</span><span class="th-so">↓</span></div></th>
+                <th><div class="th-in"><span class="th-nm">cost</span><span class="th-tp">DOUBLE</span><span class="th-so">↕</span></div></th>
+                <th><div class="th-in"><span class="th-nm">channel</span><span class="th-tp">VARCHAR</span><span class="th-so">↕</span></div></th>
+                <th><div class="th-in"><span class="th-nm">customer_id</span><span class="th-tp">VARCHAR</span><span class="th-so">↕</span></div></th>
+                <th><div class="th-in"><span class="th-nm">discount_pct</span><span class="th-tp">DOUBLE</span><span class="th-so">↕</span></div></th>
+              </tr></thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+          <div class="footer">
+            <span>rows:<span class="fv g">12,847</span></span>
+            <span>cols:<span class="fv">10</span></span>
+            <span>selected:<span class="fv g">region, revenue</span></span>
+            <span style="margin-left:auto">showing:<span class="fv">1–100 of 12,847</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Resizer -->
+      <div class="resizer" id="resizer"></div>
+
+      <!-- ══ Results Panel — 2 tabs: schema + queries ══ -->
+      <div class="results-panel" id="resultsPanel">
+        <div class="res-tabs">
+          <div class="res-tab on" data-t="schema">schema <span class="tb">10</span></div>
+          <div class="res-tab" data-t="queries">queries <span class="tb">5</span></div>
+        </div>
+
+        <!-- ── Schema Tab — clean column dictionary ── -->
+        <div class="tab-pane" id="tab-schema">
+          <div class="schema-col-list">
+            <!-- each row: name · type · null% bar · sample -->
+            <div class="scol">
+              <span class="scol-nm">date</span>
+              <span class="scol-tp d">DATE</span>
+              <span class="scol-sample">2024-01-01 · 2024-06-22</span>
+              <div class="scol-null"><div class="nb"><div class="nb-fill" style="width:0%"></div></div><span class="npct">0%</span></div>
+            </div>
+            <div class="scol">
+              <span class="scol-nm">region</span>
+              <span class="scol-tp">VARCHAR</span>
+              <span class="scol-sample">East · West · Central · South</span>
+              <div class="scol-null"><div class="nb"><div class="nb-fill" style="width:0%"></div></div><span class="npct">0%</span></div>
+            </div>
+            <div class="scol">
+              <span class="scol-nm">product</span>
+              <span class="scol-tp">VARCHAR</span>
+              <span class="scol-sample">Widget A · Gadget Pro · …</span>
+              <div class="scol-null"><div class="nb"><div class="nb-fill" style="width:2%"></div></div><span class="npct">2%</span></div>
+            </div>
+            <div class="scol">
+              <span class="scol-nm">revenue</span>
+              <span class="scol-tp n">DOUBLE</span>
+              <span class="scol-sample">1,234.50 · 8,920.00</span>
+              <div class="scol-null"><div class="nb"><div class="nb-fill" style="width:0%"></div></div><span class="npct">0%</span></div>
+            </div>
+            <div class="scol">
+              <span class="scol-nm">quantity</span>
+              <span class="scol-tp n">INTEGER</span>
+              <span class="scol-sample">12 · 45 · 128</span>
+              <div class="scol-null"><div class="nb"><div class="nb-fill" style="width:0%"></div></div><span class="npct">0%</span></div>
+            </div>
+            <div class="scol">
+              <span class="scol-nm">cost</span>
+              <span class="scol-tp n">DOUBLE</span>
+              <span class="scol-sample">890.20 · 5,410.00</span>
+              <div class="scol-null"><div class="nb"><div class="nb-fill" style="width:1%"></div></div><span class="npct">1%</span></div>
+            </div>
+            <div class="scol">
+              <span class="scol-nm">channel</span>
+              <span class="scol-tp">VARCHAR</span>
+              <span class="scol-sample">online · retail · wholesale</span>
+              <div class="scol-null"><div class="nb"><div class="nb-fill" style="width:0%"></div></div><span class="npct">0%</span></div>
+            </div>
+            <div class="scol">
+              <span class="scol-nm">customer_id</span>
+              <span class="scol-tp">VARCHAR</span>
+              <span class="scol-sample">C-1024 · C-3847 · …</span>
+              <div class="scol-null"><div class="nb"><div class="nb-fill" style="width:0%"></div></div><span class="npct">0%</span></div>
+            </div>
+            <div class="scol">
+              <span class="scol-nm">discount_pct</span>
+              <span class="scol-tp n">DOUBLE</span>
+              <span class="scol-sample">0.05 · 0.12 · NULL</span>
+              <div class="scol-null"><div class="nb"><div class="nb-fill" style="width:23%;background:var(--amber)"></div></div><span class="npct warn">23%</span></div>
+            </div>
+            <div class="scol">
+              <span class="scol-nm">profit_margin</span>
+              <span class="scol-tp n">DOUBLE</span>
+              <span class="scol-sample">0.28 · 0.35</span>
+              <div class="scol-null"><div class="nb"><div class="nb-fill" style="width:5%"></div></div><span class="npct">5%</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Queries Tab — SQL + chart merged ── -->
+        <div class="tab-pane" id="tab-queries" style="display:none;">
+          <div class="qlist">
+
+            <!-- Query #1 — Revenue by region (open, has chart) -->
+            <div class="qcard open">
+              <div class="qcard-head" onclick="toggleQCard(this)">
+                <span class="q-num">#1</span>
+                <span class="q-name">Revenue by region</span>
+                <span class="q-tag s">SELECT</span>
+                <span class="q-time">09:17</span>
+                <span class="q-arr" style="transform:rotate(90deg)">▶</span>
+              </div>
+              <div class="qcard-body">
+                <!-- SQL block -->
+                <div class="q-sql-wrap">
+                  <div class="q-sql-head">
+                    <span class="q-sql-label">SQL</span>
+                    <button class="q-sql-copy" onclick="copySqlQ(this)">⎘ copy</button>
+                    <span class="q-sql-rows">4 rows · 12ms</span>
+                  </div>
+                  <pre class="q-pre">SELECT region,
+  SUM(revenue) AS total_revenue,
+  COUNT(*) AS order_count
+FROM sales_2024
+GROUP BY region
+ORDER BY total_revenue DESC;</pre>
+                </div>
+                <!-- Chart block -->
+                <div class="q-chart-wrap">
+                  <div class="q-chart-head">
+                    <span class="q-chart-label">result</span>
+                    <div class="q-chart-types">
+                      <button class="qtybtn on">bar</button>
+                      <button class="qtybtn">line</button>
+                      <button class="qtybtn">pie</button>
+                      <button class="qtybtn">table</button>
+                    </div>
+                    <button class="q-expand" onclick="openChart()" style="margin-left:6px">⤢</button>
+                    <button class="q-chart-dl" style="margin-left:4px">↓ svg</button>
+                    <button class="q-chart-dl">⎘ csv</button>
+                  </div>
+                  <div class="q-bars">
+                    <div class="q-bar" style="height:82%;background:#3effa0"></div>
+                    <div class="q-bar" style="height:61%;background:#3a9ff5"></div>
+                    <div class="q-bar" style="height:55%;background:#f0a83a"></div>
+                    <div class="q-bar" style="height:53%;background:#a57ef5"></div>
+                    <div class="q-xaxis">
+                      <span class="q-xl">East</span><span class="q-xl">West</span>
+                      <span class="q-xl">Central</span><span class="q-xl">South</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Query #2 — Monthly trend (collapsed) -->
+            <div class="qcard">
+              <div class="qcard-head" onclick="toggleQCard(this)">
+                <span class="q-num">#2</span>
+                <span class="q-name">Monthly revenue trend</span>
+                <span class="q-tag s">SELECT</span>
+                <span class="q-time">09:20</span>
+                <span class="q-arr">▶</span>
+              </div>
+              <div class="qcard-body" style="display:none">
+                <div class="q-sql-wrap">
+                  <div class="q-sql-head">
+                    <span class="q-sql-label">SQL</span>
+                    <button class="q-sql-copy" onclick="copySqlQ(this)">⎘ copy</button>
+                    <span class="q-sql-rows">6 rows · 8ms</span>
+                  </div>
+                  <pre class="q-pre">SELECT DATE_TRUNC('month', order_date) AS month,
+  SUM(revenue) AS revenue
+FROM sales_2024
+GROUP BY 1 ORDER BY 1;</pre>
+                </div>
+                <div class="q-chart-wrap">
+                  <div class="q-chart-head">
+                    <span class="q-chart-label">result</span>
+                    <div class="q-chart-types">
+                      <button class="qtybtn on">line</button>
+                      <button class="qtybtn">area</button>
+                      <button class="qtybtn">bar</button>
+                      <button class="qtybtn">table</button>
+                    </div>
+                    <button class="q-expand" onclick="openChart()" style="margin-left:6px">⤢</button>
+                    <button class="q-chart-dl" style="margin-left:4px">↓ svg</button>
+                  </div>
+                  <div class="q-bars">
+                    <div class="q-bar" style="height:40%;background:#3effa0;opacity:.5"></div>
+                    <div class="q-bar" style="height:55%;background:#3effa0;opacity:.6"></div>
+                    <div class="q-bar" style="height:48%;background:#3effa0;opacity:.7"></div>
+                    <div class="q-bar" style="height:72%;background:#3effa0;opacity:.75"></div>
+                    <div class="q-bar" style="height:65%;background:#3effa0;opacity:.8"></div>
+                    <div class="q-bar" style="height:88%;background:#3effa0;opacity:.9"></div>
+                    <div class="q-xaxis">
+                      <span class="q-xl">Jan</span><span class="q-xl">Feb</span><span class="q-xl">Mar</span>
+                      <span class="q-xl">Apr</span><span class="q-xl">May</span><span class="q-xl">Jun</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Query #3 — Outlier detection (collapsed, no chart — scalar result) -->
+            <div class="qcard">
+              <div class="qcard-head" onclick="toggleQCard(this)">
+                <span class="q-num">#3</span>
+                <span class="q-name">Outlier detection</span>
+                <span class="q-tag a">STATS</span>
+                <span class="q-time">09:22</span>
+                <span class="q-arr">▶</span>
+              </div>
+              <div class="qcard-body" style="display:none">
+                <div class="q-sql-wrap">
+                  <div class="q-sql-head">
+                    <span class="q-sql-label">SQL</span>
+                    <button class="q-sql-copy" onclick="copySqlQ(this)">⎘ copy</button>
+                    <span class="q-sql-rows">3 rows · 24ms</span>
+                  </div>
+                  <pre class="q-pre">WITH stats AS (
+  SELECT AVG(revenue) AS mu,
+    STDDEV(revenue) AS sigma
+  FROM sales_2024
+)
+SELECT * FROM sales_2024, stats
+WHERE ABS(revenue - mu) / sigma > 3
+ORDER BY revenue DESC;</pre>
+                </div>
+                <div class="q-chart-wrap">
+                  <div class="q-chart-head">
+                    <span class="q-chart-label">result</span>
+                    <div class="q-chart-types">
+                      <button class="qtybtn on">table</button>
+                      <button class="qtybtn">bar</button>
+                    </div>
+                  </div>
+                  <div class="q-no-chart">
+                    <span style="color:var(--text3)">⊞</span>
+                    <span>3 rows — use table view</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Query #4 — Correlation -->
+            <div class="qcard">
+              <div class="qcard-head" onclick="toggleQCard(this)">
+                <span class="q-num">#4</span>
+                <span class="q-name">Correlation: qty vs revenue</span>
+                <span class="q-tag p">CORR</span>
+                <span class="q-time">09:25</span>
+                <span class="q-arr">▶</span>
+              </div>
+              <div class="qcard-body" style="display:none">
+                <div class="q-sql-wrap">
+                  <div class="q-sql-head">
+                    <span class="q-sql-label">SQL</span>
+                    <button class="q-sql-copy" onclick="copySqlQ(this)">⎘ copy</button>
+                    <span class="q-sql-rows">1 row · 5ms</span>
+                  </div>
+                  <pre class="q-pre">SELECT CORR(quantity, revenue) AS r_value
+FROM sales_2024;</pre>
+                </div>
+                <div class="q-chart-wrap">
+                  <div class="q-chart-head">
+                    <span class="q-chart-label">result</span>
+                    <div class="q-chart-types">
+                      <button class="qtybtn on">scatter</button>
+                      <button class="qtybtn">table</button>
+                    </div>
+                    <button class="q-expand" onclick="openChart()" style="margin-left:6px">⤢</button>
+                  </div>
+                  <div class="q-bars" style="padding:8px;">
+                    <svg width="100%" height="100%" viewBox="0 0 200 90" style="overflow:visible">
+                      <line x1="0" y1="90" x2="200" y2="90" stroke="#1f2128"/>
+                      <line x1="0" y1="0" x2="0" y2="90" stroke="#1f2128"/>
+                      <circle cx="20" cy="75" r="2.5" fill="#3effa0" opacity=".7"/>
+                      <circle cx="45" cy="60" r="2.5" fill="#3effa0" opacity=".7"/>
+                      <circle cx="65" cy="52" r="2.5" fill="#3effa0" opacity=".7"/>
+                      <circle cx="85" cy="42" r="2.5" fill="#3effa0" opacity=".7"/>
+                      <circle cx="105" cy="34" r="2.5" fill="#3effa0" opacity=".7"/>
+                      <circle cx="125" cy="25" r="2.5" fill="#3effa0" opacity=".7"/>
+                      <circle cx="150" cy="18" r="2.5" fill="#3effa0" opacity=".7"/>
+                      <circle cx="175" cy="10" r="2.5" fill="#3effa0" opacity=".7"/>
+                      <line x1="10" y1="82" x2="190" y2="5" stroke="#3effa0" stroke-width="1" stroke-dasharray="3,3" opacity=".3"/>
+                      <text x="5" y="8" font-family="monospace" font-size="7" fill="#3effa0">r = 0.87</text>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Query #5 — NULL audit -->
+            <div class="qcard">
+              <div class="qcard-head" onclick="toggleQCard(this)">
+                <span class="q-num">#5</span>
+                <span class="q-name">NULL audit: discount_pct</span>
+                <span class="q-tag">QA</span>
+                <span class="q-time">09:28</span>
+                <span class="q-arr">▶</span>
+              </div>
+              <div class="qcard-body" style="display:none">
+                <div class="q-sql-wrap">
+                  <div class="q-sql-head">
+                    <span class="q-sql-label">SQL</span>
+                    <button class="q-sql-copy" onclick="copySqlQ(this)">⎘ copy</button>
+                    <span class="q-sql-rows">1 row · 4ms</span>
+                  </div>
+                  <pre class="q-pre">SELECT
+  COUNT(*) AS total,
+  COUNT(discount_pct) AS non_null,
+  ROUND(100.0 * COUNT(discount_pct) / COUNT(*), 1) AS pct_filled
+FROM sales_2024;</pre>
+                </div>
+                <div class="q-chart-wrap">
+                  <div class="q-chart-head">
+                    <span class="q-chart-label">result</span>
+                    <div class="q-chart-types">
+                      <button class="qtybtn on">table</button>
+                    </div>
+                  </div>
+                  <!-- scalar result as a simple stat display -->
+                  <div style="display:flex;gap:12px;padding:8px 0;">
+                    <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">total<br><span style="font-size:16px;color:var(--text1)">12,847</span></div>
+                    <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">filled<br><span style="font-size:16px;color:var(--green)">9,892</span></div>
+                    <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">null %<br><span style="font-size:16px;color:var(--amber)">23.0%</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main-area -->
+  </div><!-- /body-row -->
+</div>
+
+<!-- ══ MODALS ══ -->
+<div class="modal-overlay" id="modalOverlay" style="display:none" onclick="handleOverlayClick(event)">
+  <div class="proj-modal" id="projModal" style="display:none;" onclick="event.stopPropagation()">
+    <div class="proj-modal-head">
+      <span class="proj-modal-title">Switch Project</span>
+      <div class="proj-modal-search">
+        <span>🔍</span>
+        <input type="text" placeholder="Search projects…" oninput="filterProjects(this.value)">
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="proj-modal-body" id="projModalBody"></div>
+  </div>
+  <div class="schema-panel" id="schemaModal" style="display:none;" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <span class="modal-title" id="schemaModalTitle">Schema Setup</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="schemaModalBody"></div>
+  </div>
+</div>
+
+<!-- ══ REPORT DRAWER ══ -->
+<div class="report-overlay" id="reportOverlay" style="display:none" onclick="handleReportOverlayClick(event)">
+  <div class="report-drawer" onclick="event.stopPropagation()">
+    <div class="rpt-header">
+      <div>
+        <div class="rpt-title">Q4 Sales Performance Analysis</div>
+        <div class="rpt-meta">2 findings · sales_2024.csv</div>
+      </div>
+      <button class="rpt-dl">↓ export</button>
+      <button class="rpt-close" onclick="closeReport()">✕</button>
+    </div>
+    <div class="rpt-sections">
+      <div class="rpt-section">
+        <div class="rpt-sec-head open" onclick="toggleRpt(this)">
+          <span class="rpt-num">#1</span>
+          <span class="rpt-sec-title">Revenue distribution by region</span>
+          <span class="rpt-time">09:17</span>
+          <button class="rpt-star on" onclick="event.stopPropagation();this.classList.toggle('on')">★</button>
+          <span class="rpt-arr" style="transform:rotate(90deg)">▶</span>
+        </div>
+        <div class="rpt-body">
+          <div class="rpt-mini-chart">
+            <div class="rpt-mini-bar" style="height:82%;background:#3effa0;opacity:.8"></div>
+            <div class="rpt-mini-bar" style="height:61%;background:#3a9ff5;opacity:.8"></div>
+            <div class="rpt-mini-bar" style="height:55%;background:#f0a83a;opacity:.8"></div>
+            <div class="rpt-mini-bar" style="height:53%;background:#a57ef5;opacity:.8"></div>
+            <div class="rpt-mini-xl"><span>East</span><span>West</span><span>Central</span><span>South</span></div>
+          </div>
+          <div class="rpt-conclusion">East leads with $4.2M (32.7%), West $3.1M (24.1%), Central $2.8M (21.8%), South $2.7M (21.4%). The East–South revenue gap is statistically significant (p &lt; 0.01).</div>
+          <div class="rpt-evidence">
+            <div class="rpt-ev-head" onclick="toggleEvidence(this)">
+              <span>📊</span><span class="rpt-ev-title">evidence</span><span class="rpt-ev-count">2 tests · 1 anomaly</span><span class="rpt-arr">▶</span>
+            </div>
+            <div class="rpt-ev-body">
+              <div class="rpt-ev-row sig"><div class="rpt-ev-dot"></div><span class="rpt-ev-key">Mann-Whitney U · East vs South</span><span class="rpt-ev-val">p = 0.003 ✓</span></div>
+              <div class="rpt-ev-row sig"><div class="rpt-ev-dot"></div><span class="rpt-ev-key">Effect size (Cohen's d)</span><span class="rpt-ev-val">d = 0.71 ✓</span></div>
+              <div class="rpt-ev-sep"></div>
+              <div class="rpt-anomaly"><span>⚠</span><span>East Q2 spike: +34% vs Q1 avg</span></div>
+            </div>
+          </div>
+          <div>
+            <div class="rpt-sql-toggle" onclick="toggleRptSql(this)">
+              <span style="font-size:7px;transition:transform .2s">▶</span><span>SQL · query #1</span>
+            </div>
+            <div class="rpt-sql-block" style="display:none;margin-top:6px">
+              <div class="rpt-sql-hd">revenue by region</div>
+              <pre class="rpt-sql-pre">SELECT region, SUM(revenue) AS total_revenue
+FROM sales_2024
+GROUP BY region
+ORDER BY total_revenue DESC;</pre>
+            </div>
+          </div>
+          <div class="rpt-sec-foot"><button class="rpt-exp-sec">↓ export section</button></div>
+        </div>
+      </div>
+      <div class="rpt-section">
+        <div class="rpt-sec-head" onclick="toggleRpt(this)">
+          <span class="rpt-num">#2</span>
+          <span class="rpt-sec-title">Revenue outliers: wholesale East channel</span>
+          <span class="rpt-time">09:22</span>
+          <button class="rpt-star" onclick="event.stopPropagation();this.classList.toggle('on')">☆</button>
+          <span class="rpt-arr">▶</span>
+        </div>
+        <div class="rpt-body" style="display:none">
+          <div class="rpt-conclusion">3 outliers detected above $50K (z-score &gt; 3.0): rows #847 ($52K), #2341 ($61K), #9102 ($58K). All wholesale transactions from East region — likely bulk orders.</div>
+          <div class="rpt-evidence">
+            <div class="rpt-ev-head" onclick="toggleEvidence(this)">
+              <span>📊</span><span class="rpt-ev-title">evidence</span><span class="rpt-ev-count">1 test · 3 anomalies</span><span class="rpt-arr">▶</span>
+            </div>
+            <div class="rpt-ev-body">
+              <div class="rpt-ev-row sig"><div class="rpt-ev-dot"></div><span class="rpt-ev-key">Z-score threshold &gt; 3.0</span><span class="rpt-ev-val">3 rows ✓</span></div>
+              <div class="rpt-ev-sep"></div>
+              <div class="rpt-anomaly"><span>⚠</span><span>Row #847: $52,400 (z=3.2)</span></div>
+              <div class="rpt-anomaly"><span>⚠</span><span>Row #2341: $61,800 (z=3.9)</span></div>
+              <div class="rpt-anomaly"><span>⚠</span><span>Row #9102: $58,200 (z=3.6)</span></div>
+            </div>
+          </div>
+          <div class="rpt-sec-foot"><button class="rpt-exp-sec">↓ export section</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ CHART FULLSCREEN ══ -->
+<div class="chart-overlay" id="chartOverlay" style="display:none" onclick="closeChart(event)">
+  <div class="chart-overlay-card" onclick="event.stopPropagation()">
+    <div class="co-head">
+      <span class="co-title">Revenue by Region</span>
+      <div class="q-chart-types" style="gap:4px">
+        <button class="qtybtn on">bar</button><button class="qtybtn">line</button>
+        <button class="qtybtn">pie</button><button class="qtybtn">table</button>
+      </div>
+      <button class="co-close" onclick="closeChart()">✕</button>
+    </div>
+    <div class="co-body">
+      <div class="big-bars">
+        <div class="bbr" style="height:82%;background:#3effa0"></div>
+        <div class="bbr" style="height:61%;background:#3a9ff5"></div>
+        <div class="bbr" style="height:55%;background:#f0a83a"></div>
+        <div class="bbr" style="height:53%;background:#a57ef5"></div>
+      </div>
+      <div class="big-lbls">
+        <div class="bbrl">East · $4.2M</div><div class="bbrl">West · $3.1M</div>
+        <div class="bbrl">Central · $2.8M</div><div class="bbrl">South · $2.7M</div>
+      </div>
+    </div>
+    <div class="co-foot">
+      <span class="co-stat">total:<span>$12.8M</span></span>
+      <span class="co-stat">avg/region:<span>$3.2M</span></span>
+      <span class="co-stat">East lead:<span>+32.7%</span></span>
+      <button class="co-dl">↓ SVG</button><button class="co-dl">↓ CSV</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ RIGHT-CLICK MENU ══ -->
+<div class="ctx-menu" id="ctxMenu" style="display:none">
+  <div class="cm g"><span class="ico">↑↓</span>Sort ascending</div>
+  <div class="cm g"><span class="ico">↓↑</span>Sort descending</div>
+  <div class="cm-sep"></div>
+  <div class="cm"><span class="ico">📊</span>Distribution</div>
+  <div class="cm"><span class="ico">Σ</span>Summary statistics</div>
+  <div class="cm"><span class="ico">🔍</span>Detect outliers</div>
+  <div class="cm-sep"></div>
+  <div class="cm"><span class="ico">✏️</span>Rename</div>
+  <div class="cm"><span class="ico">🧹</span>Fill null values</div>
+  <div class="cm r"><span class="ico">✕</span>Remove column</div>
+</div>
+
+<script>
+/* ══ Grid data ══ */
+const RS=['East','West','Central','South'],PS=['Widget A','Gadget Pro','Module X','Sensor Y'],CH=['online','retail','wholesale'];
+function rD(){return`2024-${String(Math.floor(Math.random()*12)+1).padStart(2,'0')}-${String(Math.floor(Math.random()*28)+1).padStart(2,'0')}`;}
+const tb=document.getElementById('tbody');
+for(let i=0;i<100;i++){
+  const r=(Math.random()*14800+200).toFixed(2),q=Math.floor(Math.random()*200)+1,c=(r*(0.4+Math.random()*.3)).toFixed(2),d=Math.random()>.23?(Math.random()*.25).toFixed(2):null;
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td class="rn">${i+1}</td><td class="dt">${rD()}</td><td class="sel">${RS[Math.floor(Math.random()*4)]}</td><td>${PS[Math.floor(Math.random()*4)]}</td><td class="num sel">${Number(r).toLocaleString()}</td><td class="num">${q}</td><td class="num">${Number(c).toLocaleString()}</td><td>${CH[Math.floor(Math.random()*3)]}</td><td>C-${Math.floor(Math.random()*5000)+1000}</td><td class="${d===null?'nul':'num'}">${d===null?'NULL':d}</td>`;
+  tb.appendChild(tr);
+}
+
+/* ══ Projects ══ */
+const PROJECTS=[
+  {id:'p1',name:'Q4 Sales Performance Analysis',datasets:['sales_2024.csv','customers.xlsx'],rows:'12,847',analyses:8,charts:3,time:'2 min ago',active:true,colors:['#3effa0','#3a9ff5','#f0a83a','#a57ef5'],heights:[82,61,55,53]},
+  {id:'p2',name:'Customer Churn Prediction',datasets:['churn_data.csv'],rows:'8,320',analyses:5,charts:2,time:'1 hour ago',active:false,colors:['#f05a5a','#f0a83a','#f05a5a','#f0a83a'],heights:[70,45,80,35]},
+  {id:'p3',name:'Marketing ROI Deep Dive',datasets:['campaigns.xlsx'],rows:'4,103',analyses:3,charts:1,time:'3 hours ago',active:false,colors:['#a57ef5','#a57ef5','#a57ef5','#a57ef5'],heights:[40,60,75,55]},
+  {id:'p4',name:'Product Category Breakdown',datasets:['products.csv'],rows:'2,891',analyses:6,charts:4,time:'yesterday 15:42',active:false,colors:['#3a9ff5','#3a9ff5','#3a9ff5','#3a9ff5'],heights:[50,90,30,65]},
+  {id:'p5',name:'Supply Chain Analysis',datasets:['logistics.csv','warehouse.xlsx'],rows:'31,204',analyses:2,charts:1,time:'2 days ago',active:false,colors:['#f0a83a','#3effa0','#f0a83a','#3effa0'],heights:[60,40,70,50]},
+];
+
+function renderProjectCard(p){
+  const barsHtml=p.colors.map((c,i)=>`<div class="proj-bar" style="height:${p.heights[i]}%;background:${c};opacity:.75"></div>`).join('');
+  const dsHtml=p.datasets.map(d=>`<span class="proj-ds">${d}</span>`).join('');
+  const badge=p.active?`<div class="proj-active-badge"><span style="width:5px;height:5px;border-radius:50%;background:var(--green);display:inline-block"></span>current</div>`:'';
+  return`<div class="proj-card${p.active?' active-proj':''}" data-id="${p.id}" data-name="${p.name.toLowerCase()}" onclick="selectProject('${p.id}','${p.name}')">
+    <div class="proj-stripe"></div>
+    <div class="proj-body">
+      ${badge}
+      <div class="proj-name">${p.name}</div>
+      <div class="proj-meta">${dsHtml}</div>
+      <div class="proj-stats">${p.rows} rows · <span>${p.analyses} analyses</span> · ${p.charts} charts</div>
+      <div class="proj-time">${p.time}</div>
+    </div>
+    <div class="proj-thumb">${barsHtml}</div>
+  </div>`;
+}
+
+function renderProjects(filter=''){
+  const body=document.getElementById('projModalBody');
+  const f=PROJECTS.filter(p=>!filter||p.name.toLowerCase().includes(filter)||p.datasets.some(d=>d.toLowerCase().includes(filter)));
+  let html=`<button class="proj-new-card"><span style="font-size:16px;opacity:.6">＋</span><span>New Project</span><span style="margin-left:auto;font-size:9px;opacity:.5">drop a dataset to begin</span></button>`;
+  const active=f.filter(p=>p.active),today=f.filter(p=>!p.active&&(p.time.includes('min')||p.time.includes('hour'))),older=f.filter(p=>!p.active&&!p.time.includes('min')&&!p.time.includes('hour'));
+  if(active.length)html+=`<div class="proj-sec-label">current</div><div class="proj-grid">${active.map(renderProjectCard).join('')}</div>`;
+  if(today.length)html+=`<div class="proj-sec-label">today</div><div class="proj-grid">${today.map(renderProjectCard).join('')}</div>`;
+  if(older.length)html+=`<div class="proj-sec-label">earlier</div><div class="proj-grid">${older.map(renderProjectCard).join('')}</div>`;
+  if(!f.length)html+=`<div style="text-align:center;padding:40px;font-family:var(--mono);font-size:11px;color:var(--text3)">No projects found</div>`;
+  body.innerHTML=html;
+}
+function filterProjects(v){renderProjects(v.toLowerCase());}
+function selectProject(id,name){
+  PROJECTS.forEach(p=>p.active=p.id===id);
+  document.querySelector('.proj-sw-name').textContent=name.length>28?name.slice(0,27)+'…':name;
+  renderProjects();
+  setTimeout(()=>closeModal(),320);
+}
+
+/* ══ Schema modal ══ */
+function getSchemaHTML(){
+  return`
+<div class="schema-modal-section">
+  <div class="sm-label w">⛔ resolved — 2 blocking issues</div>
+  <div class="bi-card resolved"><div class="bi-head"><span class="bi-col">order_date</span><span class="bi-badge" style="border-color:var(--gbrd);color:var(--green)">→ DATE ✓</span></div><div class="bi-desc" style="color:var(--text3)">Parsed as DATE</div></div>
+  <div class="bi-card resolved" style="margin-top:8px"><div class="bi-head"><span class="bi-col">revenue_usd</span><span class="bi-badge" style="border-color:var(--gbrd);color:var(--green)">→ DOUBLE ✓</span></div><div class="bi-desc" style="color:var(--text3)">Stripped symbols, parsed as DOUBLE</div></div>
+</div>
+<div class="schema-modal-section">
+  <div class="sm-label i">⚠ warnings — 2 columns</div>
+  <div class="warn-row"><span style="color:var(--amber)">⚠</span><span style="font-family:var(--mono);font-size:11px;color:var(--text1)">discount_pct</span><span style="font-size:11px;color:var(--text2)">· 23% NULL</span></div>
+  <div class="warn-row" style="margin-top:4px"><span style="color:var(--amber)">⚠</span><span style="font-family:var(--mono);font-size:11px;color:var(--text1)">cost</span><span style="font-size:11px;color:var(--text2)">· 1% NULL</span></div>
+</div>
+<div class="schema-modal-section">
+  <div class="sm-label ok">✓ auto-converted — 3 columns</div>
+  <div class="auto-row"><span class="auto-check">✓</span><span class="auto-col">quantity</span><span class="auto-arr">→</span><span class="auto-to">INTEGER</span></div>
+  <div class="auto-row"><span class="auto-check">✓</span><span class="auto-col">profit_margin</span><span class="auto-arr">→</span><span class="auto-to">DOUBLE</span></div>
+  <div class="auto-row"><span class="auto-check">✓</span><span class="auto-col">channel</span><span class="auto-arr">kept</span><span class="auto-to">VARCHAR</span></div>
+</div>
+<div style="padding:12px 2px"><button class="confirm-btn" style="width:100%;font-size:11px">↻ re-apply decisions</button></div>`;
+}
+
+/* ══ Modal open/close ══ */
+function openProjectsModal(){
+  document.getElementById('modalOverlay').className='modal-overlay';
+  document.getElementById('modalOverlay').style.display='flex';
+  document.getElementById('projModal').style.display='flex';
+  document.getElementById('schemaModal').style.display='none';
+  renderProjects();
+}
+function openSchemaModal(btn,filename){
+  document.getElementById('modalOverlay').className='modal-overlay schema-overlay';
+  document.getElementById('modalOverlay').style.display='flex';
+  document.getElementById('schemaModal').style.display='flex';
+  document.getElementById('projModal').style.display='none';
+  document.getElementById('schemaModalTitle').textContent=`Schema — ${filename}`;
+  document.getElementById('schemaModalBody').innerHTML=getSchemaHTML();
+}
+function closeModal(){
+  document.getElementById('modalOverlay').style.display='none';
+  document.getElementById('projModal').style.display='none';
+  document.getElementById('schemaModal').style.display='none';
+}
+function handleOverlayClick(e){if(e.target===document.getElementById('modalOverlay'))closeModal();}
+
+/* ══ Report ══ */
+function openReport(){document.getElementById('reportOverlay').style.display='flex';}
+function closeReport(){document.getElementById('reportOverlay').style.display='none';}
+function handleReportOverlayClick(e){if(e.target===document.getElementById('reportOverlay'))closeReport();}
+
+/* ══ Schema blocking ══ */
+let resolved={bc1:true,bc2:false};
+function pickOpt(btn,id){
+  btn.closest('.opts').querySelectorAll('.opt').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');resolved[id]=true;
+  document.getElementById(id).classList.add('resolved');updateStatus();
+}
+function updateStatus(){
+  const allDone=Object.values(resolved).every(Boolean);
+  document.getElementById('confirmBtn').disabled=!allDone;
+  document.getElementById('sfStatus').textContent=allDone?'✓ all issues resolved — ready to confirm':'⛔ resolve '+Object.values(resolved).filter(v=>!v).length+' blocking issue(s) to continue';
+  document.getElementById('sfStatus').className='sf-status'+(allDone?' ready':'');
+}
+updateStatus();
+
+function doConfirm(){
+  const fl=document.getElementById('schemaFirstload');
+  fl.style.transition='transform .5s ease-in, opacity .4s ease-in';
+  fl.style.transformOrigin='left center';
+  fl.style.transform='scale(0.05) translateX(-700px)';
+  fl.style.opacity='0';
+  setTimeout(()=>{
+    fl.style.display='none';
+    const gs=document.getElementById('gridSection');
+    gs.style.display='flex';gs.style.animation='gridReveal .4s ease-out';
+  },480);
+}
+
+/* ══ Resizer ══ */
+const resizer=document.getElementById('resizer'),rp=document.getElementById('resultsPanel');
+rp.style.width='320px';rp.style.flexShrink='0';
+let sx=0,sw=0;
+resizer.addEventListener('mousedown',e=>{
+  e.preventDefault();sx=e.clientX;sw=rp.offsetWidth;
+  resizer.classList.add('drag');document.body.classList.add('resizing');
+  const mv=e=>{rp.style.width=Math.max(240,sx-e.clientX+sw)+'px';};
+  const up=()=>{resizer.classList.remove('drag');document.body.classList.remove('resizing');document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};
+  document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+});
+
+/* ══ Tabs ══ */
+document.querySelectorAll('.res-tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('.res-tab').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on');
+    document.getElementById('tab-schema').style.display='none';
+    document.getElementById('tab-queries').style.display='none';
+    document.getElementById('tab-'+t.dataset.t).style.display='flex';
+  });
+});
+
+/* ══ Query card toggle ══ */
+function toggleQCard(head){
+  const card=head.parentElement,body=head.nextElementSibling;
+  if(!body)return;
+  const open=body.style.display!=='none';
+  body.style.display=open?'none':'flex';
+  card.classList.toggle('open',!open);
+  head.querySelector('.q-arr').style.transform=open?'':'rotate(90deg)';
+}
+
+/* ══ Copy SQL ══ */
+function copySqlQ(btn){
+  const pre=btn.closest('.q-sql-wrap').querySelector('.q-pre');
+  navigator.clipboard.writeText(pre.textContent).then(()=>{btn.textContent='✓ copied';setTimeout(()=>btn.textContent='⎘ copy',1500);});
+}
+
+/* ══ Chart ══ */
+function openChart(){document.getElementById('chartOverlay').style.display='flex';}
+function closeChart(e){if(!e||e.target===document.getElementById('chartOverlay'))document.getElementById('chartOverlay').style.display='none';}
+
+/* ══ Report toggles ══ */
+function toggleRpt(head){
+  const body=head.nextElementSibling;if(!body)return;
+  const open=body.style.display!=='none';
+  body.style.display=open?'none':'flex';
+  head.classList.toggle('open',!open);
+}
+function toggleRptSql(toggle){
+  const block=toggle.nextElementSibling;if(!block)return;
+  const open=block.style.display!=='none';
+  block.style.display=open?'none':'block';
+  toggle.querySelector('span').style.transform=open?'':'rotate(90deg)';
+}
+function toggleEvidence(head){
+  const body=head.nextElementSibling;if(!body)return;
+  const open=body.style.display!=='none';
+  body.style.display=open?'none':'flex';
+  head.querySelector('.rpt-arr').style.transform=open?'':'rotate(90deg)';
+}
+
+/* ══ Keyboard ══ */
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeChart();closeReport();}});
+
+/* ══ Chat ══ */
+function autoResizeTA(ta){ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,160)+'px';}
+function toggleChat(){
+  const col=document.getElementById('chatCol'),cr=document.getElementById('chatResizer'),btn=document.getElementById('sb-chat');
+  const isOpen=col.style.display!=='none';
+  col.style.display=isOpen?'none':'flex';
+  cr.style.display=isOpen?'none':'block';
+  btn.classList.toggle('active',!isOpen);
+  if(!isOpen){const msgs=document.getElementById('chatMessages');setTimeout(()=>msgs.scrollTo({top:msgs.scrollHeight,behavior:'smooth'}),50);}
+}
+(function(){
+  const cr=document.getElementById('chatResizer'),chatCol=document.getElementById('chatCol');
+  chatCol.style.width='300px';let sx=0,sw=0;
+  cr.addEventListener('mousedown',e=>{
+    e.preventDefault();sx=e.clientX;sw=chatCol.offsetWidth;
+    cr.classList.add('drag');document.body.classList.add('resizing');
+    const mv=e=>{chatCol.style.width=Math.max(220,Math.min(520,sw+e.clientX-sx))+'px';};
+    const up=()=>{cr.classList.remove('drag');document.body.classList.remove('resizing');document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  });
+})();
+function openSessionDrawer(){document.getElementById('sessionDrawer').style.display='flex';}
+function closeSessionDrawer(){document.getElementById('sessionDrawer').style.display='none';}
+function truncateSessName(q,max=30){q=q.trim();return q.length<=max?q:q.slice(0,max-1)+'…';}
+let currentSessEl=null,currentSessNamed=true;
+function switchSession(el,name){
+  document.querySelectorAll('.sess-item').forEach(s=>s.classList.remove('active-sess'));
+  el.classList.add('active-sess');currentSessEl=el;currentSessNamed=true;
+  document.querySelector('.chat-col-session').innerHTML=`💬 <em>${truncateSessName(name)}</em> · ${el.querySelector('.sess-time').textContent}`;
+  closeSessionDrawer();
+}
+function newSession(){
+  const now=new Date(),time=`${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+  const item=document.createElement('div');item.className='sess-item active-sess';item.dataset.firstQuery='';
+  item.innerHTML=`<div class="sess-dot"></div><div class="sess-body"><div class="sess-name" style="color:var(--text3);font-style:italic">Untitled session</div><div class="sess-meta"><span>0 messages</span></div><div class="sess-preview" style="opacity:.4">waiting for first message…</div></div><span class="sess-time">${time}</span>`;
+  document.querySelector('.sess-sec').after(item);item.onclick=()=>switchSession(item,item.dataset.firstQuery||'Untitled session');
+  currentSessEl=item;currentSessNamed=false;
+  document.querySelectorAll('.sess-item').forEach(s=>s!==item&&s.classList.remove('active-sess'));
+  document.querySelector('.chat-col-session').innerHTML=`💬 <em style="color:var(--text3);font-style:italic">Untitled session</em> · ${time}`;
+  closeSessionDrawer();
+  document.getElementById('chatMessages').innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;opacity:.35;padding:20px"><div style="font-size:22px">💬</div><div style="font-family:var(--mono);font-size:10px;color:var(--text3);text-align:center;line-height:1.7">New session started.<br>Context cleared.</div></div>`;
+}
+function maybeName(query){
+  if(currentSessNamed||!currentSessEl||!query.trim())return;
+  const name=truncateSessName(query.trim());currentSessNamed=true;currentSessEl.dataset.firstQuery=query.trim();
+  const nm=currentSessEl.querySelector('.sess-name');nm.textContent=name;nm.style.color='';nm.style.fontStyle='';
+  currentSessEl.querySelector('.sess-preview').textContent='↳ '+name;
+  document.querySelector('.chat-col-session').innerHTML=`💬 <em>${name}</em> · ${currentSessEl.querySelector('.sess-time').textContent}`;
+}
+document.querySelector('.chat-send').addEventListener('click',()=>{
+  const ta=document.getElementById('chatTA'),q=ta.value.trim();if(!q)return;
+  maybeName(q);
+  const msgs=document.getElementById('chatMessages');
+  const bubble=document.createElement('div');bubble.className='cm-msg-user';
+  bubble.innerHTML=`<div class="cm-bubble">${q}</div>`;
+  msgs.appendChild(bubble);msgs.scrollTo({top:msgs.scrollHeight,behavior:'smooth'});
+  ta.value='';autoResizeTA(ta);
+  if(currentSessEl){const meta=currentSessEl.querySelector('.sess-meta span');if(meta){const c=parseInt(meta.textContent)||0;meta.textContent=`${c+1} message${c+1!==1?'s':''}`;}}
+});
+document.getElementById('chatTA').addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();document.querySelector('.chat-send').click();}
+});
+function fillChatPanel(chip){const ta=document.getElementById('chatTA');ta.value=chip.textContent;ta.focus();autoResizeTA(ta);}
+function fillChatStr(s){
+  const col=document.getElementById('chatCol');if(col.style.display==='none')toggleChat();
+  const ta=document.getElementById('chatTA');if(!ta)return;ta.value=s;ta.focus();autoResizeTA(ta);
+}
+
+/* ══ Right-click ══ */
+const ctxMenu=document.getElementById('ctxMenu');
+document.querySelectorAll('.grid th .th-in').forEach(th=>{
+  th.addEventListener('contextmenu',e=>{
+    e.preventDefault();
+    ctxMenu.style.cssText=`display:block;left:${Math.min(e.clientX,window.innerWidth-200)}px;top:${Math.min(e.clientY,window.innerHeight-220)}px`;
+  });
+});
+document.addEventListener('click',()=>ctxMenu.style.display='none');
+</script>
+</body>
+</html>

@@ -44,6 +44,9 @@ dependencies = [
     "psycopg2-binary>=2.9",
     "aiofiles>=25.1",
 
+    # ── Language ──
+    "langdetect>=1.0.9",
+
     # ── Utilities ──
     "httpx>=0.28",
     "orjson>=3.11",

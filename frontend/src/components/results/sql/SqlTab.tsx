@@ -64,6 +64,7 @@ function SqlEntry({
           {rec.query}
         </span>
         <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--green)' }}>{rec.steps.length} {rec.steps.length === 1 ? 'query' : 'queries'}</span>
+        <VersionBadge versions={rec.datasetVersions} />
         <span style={{ fontSize: 9, color: 'var(--text3)', transition: 'transform 0.2s', transform: expanded ? 'rotate(90deg)' : '' }}>▶</span>
       </div>
 
@@ -100,5 +101,31 @@ function SqlEntry({
         </div>
       )}
     </div>
+  )
+}
+
+// ── Version badge ──────────────────────────────────────────────
+
+function VersionBadge({ versions }: { versions: Record<string, string> }) {
+  const entries = Object.values(versions)
+  if (entries.length === 0) return null
+  return (
+    <>
+      {entries.map((vId) => (
+        <span
+          key={vId}
+          title={`Generated from dataset version ${vId}`}
+          style={{
+            fontFamily: 'var(--mono)', fontSize: 8.5,
+            padding: '1px 5px', borderRadius: 3,
+            border: '1px solid var(--green-border)',
+            background: 'var(--green-dim)', color: 'var(--green)',
+            whiteSpace: 'nowrap', opacity: 0.75,
+          }}
+        >
+          {vId}
+        </span>
+      ))}
+    </>
   )
 }

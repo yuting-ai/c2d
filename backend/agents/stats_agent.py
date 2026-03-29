@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 STATS_SYSTEM = """You are a statistical analyst. Based on the SQL query results and the user's question,
 decide which statistical tests to run and what to check.
 
+Natural-language fields (e.g. description) must match language code: {user_lang}. Do not switch language.
+
 Data columns: {columns}
 Data preview (first 20 rows):
 {data_preview}
@@ -82,6 +84,7 @@ async def stats_agent(state: AgentState) -> dict:
 
     # Ask LLM what tests to run
     prompt = STATS_SYSTEM.format(
+        user_lang=state.get("user_lang", "en"),
         columns=", ".join(final_columns),
         data_preview=f"{header}\n{rows_text}",
         row_count=len(final_rows),

@@ -1,0 +1,9 @@
+{
+  "critic_score": "median",
+  "total_sales": "median",
+  "na_sales": "median",
+  "jp_sales": "median",
+  "pal_sales": "median",
+  "other_sales": "median",
+  "last_update": "exclude"
+}

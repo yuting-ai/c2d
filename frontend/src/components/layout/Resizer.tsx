@@ -4,9 +4,11 @@ interface ResizerProps {
   side: 'left' | 'right'
   targetRef: React.RefObject<HTMLDivElement | null>
   defaultWidth?: number
+  minWidth?: number
+  maxWidth?: number
 }
 
-export default function Resizer({ side, targetRef, defaultWidth }: ResizerProps) {
+export default function Resizer({ side, targetRef, defaultWidth, minWidth = 160, maxWidth = 480 }: ResizerProps) {
   const dragging = useRef(false)
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
@@ -22,7 +24,7 @@ export default function Resizer({ side, targetRef, defaultWidth }: ResizerProps)
     const onMove = (e: MouseEvent) => {
       const dx = e.clientX - startX
       if (side === 'left') {
-        target.style.width = Math.max(160, Math.min(480, startW + dx)) + 'px'
+        target.style.width = Math.max(minWidth, Math.min(maxWidth, startW + dx)) + 'px'
       } else {
         const parent = target.parentElement
         if (!parent) return
@@ -43,7 +45,7 @@ export default function Resizer({ side, targetRef, defaultWidth }: ResizerProps)
 
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
-  }, [side, targetRef])
+  }, [side, targetRef, minWidth, maxWidth])
 
   const onDoubleClick = useCallback(() => {
     const target = targetRef.current

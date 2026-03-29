@@ -1,21 +1,29 @@
 import { useState } from 'react'
 import { useProjectStore, type Project } from '../../stores/projectStore'
 import { useSchemaStore } from '../../stores/schemaStore'
+import { useChatStore } from '../../stores/chatStore'
 import { useUIStore } from '../../stores/uiStore'
+
+const EMPTY_SESSIONS: any[] = []
 
 export default function Sidebar() {
   const projects = useProjectStore((s) => s.projects)
   const activeProjectId = useProjectStore((s) => s.activeProjectId)
   const selectProject = useProjectStore((s) => s.selectProject)
   const toggleStar = useProjectStore((s) => s.toggleStar)
-  const resetSchema = useSchemaStore((s) => s.reset)
   const switchProject = useSchemaStore((s) => s.switchProject)
   const setSchemaPanelOpen = useUIStore((s) => s.setSchemaPanelOpen)
+  const initProjectSession = useChatStore((s) => s.initProjectSession)
+  const createSession = useChatStore((s) => s.createSession)
+  const selectSession = useChatStore((s) => s.selectSession)
+  const sessions = useChatStore((s) => (activeProjectId ? s.sessionsByProject[activeProjectId] || EMPTY_SESSIONS : EMPTY_SESSIONS))
+  const activeSessionId = useChatStore((s) => (activeProjectId ? s.activeSessionIdByProject[activeProjectId] || null : null))
 
   const handleSelectProject = (id: string) => {
     if (id === activeProjectId) return
     selectProject(id)
     switchProject(id)
+    initProjectSession(id)
     // If project is confirmed, collapse schema panel; otherwise open it
     const schemaState = useSchemaStore.getState()
     setSchemaPanelOpen(schemaState.systemMode !== 'chat')
@@ -86,6 +94,41 @@ export default function Sidebar() {
               <div className="section-label">Last 7 days</div>
               {lastWeek.map((p) => (
                 <ProjectItem key={p.id} project={p} active={p.id === activeProjectId} onSelect={handleSelectProject} onToggleStar={toggleStar} />
+              ))}
+            </>
+          )}
+
+          <div className="section-label">Recent sessions</div>
+          {!activeProjectId && (
+            <div className="sidebar-note">Select a project to view session history</div>
+          )}
+
+          {activeProjectId && (
+            <>
+              <button
+                className="new-session-btn"
+                onClick={() => {
+                  const id = createSession(activeProjectId)
+                  selectSession(activeProjectId, id)
+                }}
+              >
+                + new session
+              </button>
+
+              {(sessions.length === 0) && (
+                <div className="sidebar-note">No sessions yet</div>
+              )}
+
+              {sessions.map((sess) => (
+                <button
+                  key={sess.id}
+                  className={`session-item ${sess.id === activeSessionId ? 'active' : ''}`}
+                  onClick={() => selectSession(activeProjectId, sess.id)}
+                  title={sess.title}
+                >
+                  <span className="session-title">{sess.title}</span>
+                  <span className="session-meta">{sess.messageCount} msg · {sess.createdAt}</span>
+                </button>
               ))}
             </>
           )}

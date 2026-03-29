@@ -5,6 +5,8 @@ import logging
 from typing import AsyncGenerator
 from backend.graph.pipeline import pipeline
 from backend.graph.state import AgentState
+from backend.graph.language import detect_language
+from backend.db.versioning import get_current_version_id
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +16,17 @@ async def run_analysis_stream(
     query: str,
     active_tables: list[dict],
     quality_notes: list[str],
+    dataset_ids: list[str] | None = None,
+    null_handling_config: dict | None = None,
 ) -> AsyncGenerator[dict, None]:
     """Run pipeline, yield SSE dicts as each node completes."""
 
+    user_lang = detect_language(query)
+    logger.info("user_lang=%s", user_lang)
+
     initial_state: AgentState = {
         "user_query": query,
+        "user_lang": user_lang,
         "project_id": project_id,
         "session_id": f"session_{project_id}",
         "active_tables": active_tables,
@@ -29,6 +37,8 @@ async def run_analysis_stream(
         "sql_result": {},
         "stream_events": [],
         "retry_count": 0,
+        "null_handling_config": null_handling_config or {},
+        "data_quality_warnings": [],
     }
 
     final_sql_result = {}
@@ -74,13 +84,27 @@ async def run_analysis_stream(
             }
         else:
             report_data = final_report or {}
+
+            # Collect current dataset version IDs so results can be tagged
+            dataset_versions: dict[str, str] = {}
+            if dataset_ids:
+                for ds_id in dataset_ids:
+                    vid = get_current_version_id(project_id, ds_id)
+                    if vid:
+                        dataset_versions[ds_id] = vid
+
+            conclusion_text = report_data.get("conclusion") or answer
+
+            null_handling_note = final_sql_result.get("null_handling_note")
             done_data = {
                 "report": {
-                    "conclusion": answer,
+                    "conclusion": conclusion_text,
                     "should_record": report_data.get("should_record", bool(final_sql_result.get("final_rows"))),
                     "strategy_version": report_data.get("strategy_version", 1),
                     "evidence": report_data.get("evidence"),
+                    "null_handling_note": null_handling_note,
                 },
+                "dataset_versions": dataset_versions,
                 "sql_result": {
                     "columns": final_sql_result.get("final_columns", []),
                     "rows": final_sql_result.get("final_rows", [])[:50],

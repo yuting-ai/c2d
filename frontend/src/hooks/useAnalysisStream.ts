@@ -1,32 +1,68 @@
 import { useCallback, useRef } from 'react'
 import { useChatStore } from '../stores/chatStore'
 import { useResultsStore } from '../stores/resultsStore'
+import type { NullHandlingConfig, NullHandlingWarning } from '../components/chat/NullHandlingCard'
 
 export function useAnalysisStream() {
-  const addExchange = useChatStore((s) => s.addExchange)
-  const updateTrace = useChatStore((s) => s.updateTrace)
-  const addSqlSteps = useChatStore((s) => s.addSqlSteps)
-  const setReply = useChatStore((s) => s.setReply)
-  const setStatus = useChatStore((s) => s.setStatus)
-  const setError = useChatStore((s) => s.setError)
-  const activeSource = useRef<EventSource | null>(null)
+  const activeRun = useRef<{
+    source: EventSource | null
+    chartRecordId: number | null
+    projectId: string | null
+    sessionId: string | null
+    exchangeId: number | null
+  }>({
+    source: null,
+    chartRecordId: null,
+    projectId: null,
+    sessionId: null,
+    exchangeId: null,
+  })
 
-  const submit = useCallback((query: string, projectId: string) => {
-    if (activeSource.current) {
-      activeSource.current.close()
-      activeSource.current = null
+  const clearActiveRun = () => {
+    activeRun.current.source = null
+    activeRun.current.chartRecordId = null
+    activeRun.current.projectId = null
+    activeRun.current.sessionId = null
+    activeRun.current.exchangeId = null
+  }
+
+  const stop = useCallback(() => {
+    const { source, chartRecordId, projectId, sessionId, exchangeId } = activeRun.current
+    if (!source) return
+
+    source.close()
+
+    if (chartRecordId !== null) {
+      useResultsStore.getState().removeChartRecord(chartRecordId)
+    }
+    if (projectId && sessionId && exchangeId !== null) {
+      useChatStore.getState().setStatus(projectId, sessionId, exchangeId, 'done')
     }
 
-    const exchangeId = addExchange(query)
+    clearActiveRun()
+  }, [])
 
-    const url = `/api/analyze/stream?project_id=${encodeURIComponent(projectId)}&query=${encodeURIComponent(query)}`
+  // ── Core stream launcher — shared by submit and continueAfterNullHandling ──
+  const _startStream = useCallback((
+    query: string,
+    projectId: string,
+    sessionId: string,
+    exchangeId: number,
+    chartRecordId: number,
+    nullConfig?: NullHandlingConfig,
+  ) => {
+    let url = `/api/analyze/stream?project_id=${encodeURIComponent(projectId)}&query=${encodeURIComponent(query)}`
+    if (nullConfig && Object.keys(nullConfig).length > 0) {
+      url += `&null_handling_config=${encodeURIComponent(JSON.stringify(nullConfig))}`
+    }
+
     const eventSource = new EventSource(url)
-    activeSource.current = eventSource
+    activeRun.current.source = eventSource
 
     eventSource.addEventListener('progress', (e) => {
       try {
         const data = JSON.parse(e.data)
-        updateTrace(exchangeId, data.steps)
+        useChatStore.getState().updateTrace(projectId, sessionId, exchangeId, data.steps)
       } catch {}
     })
 
@@ -35,7 +71,7 @@ export function useAnalysisStream() {
       try {
         const data = JSON.parse(e.data)
         if (data.type === 'sql' && data.steps) {
-          addSqlSteps(exchangeId, data.steps)
+          useChatStore.getState().addSqlSteps(projectId, sessionId, exchangeId, data.steps)
         }
         // viz result events are ignored here — we use the done event instead
         // this prevents chart duplication during critic retries
@@ -47,14 +83,23 @@ export function useAnalysisStream() {
       try {
         const data = JSON.parse(e.data)
         const conclusion = data.report?.conclusion || 'Analysis complete.'
-        setReply(exchangeId, conclusion)
-        setStatus(exchangeId, 'done')
+        useChatStore.getState().setReply(projectId, sessionId, exchangeId, conclusion)
+        useChatStore.getState().setStatus(projectId, sessionId, exchangeId, 'done')
 
-        // ── Add chart to Chart Tab (only from done event) ──
+        // Surface null handling annotation if present
+        const nullNote = data.report?.null_handling_note
+        if (nullNote) {
+          useChatStore.getState().setNullHandlingNote(projectId, sessionId, exchangeId, nullNote)
+        }
+
+        // ── Dataset versions snapshot from this analysis run ──
+        const datasetVersions: Record<string, string> = data.dataset_versions || {}
+
+        // ── Finalize chart record ──
         const viz = data.viz_result
         if (viz && viz.series) {
-          useResultsStore.getState().addChartRecord({
-            id: 0,
+          useResultsStore.getState().finalizeChartRecord(chartRecordId, {
+            requestId: chartRecordId,
             query,
             type: viz.type || 'bar',
             altTypes: viz.alt_types || [],
@@ -65,7 +110,10 @@ export function useAnalysisStream() {
             series: viz.series || [],
             tableData: viz.table_data || null,
             status: 'done',
+            datasetVersions,
           })
+        } else {
+          useResultsStore.getState().removeChartRecord(chartRecordId)
         }
 
         // ── Add SQL to SQL Tab ──
@@ -76,18 +124,23 @@ export function useAnalysisStream() {
             query,
             steps: sqlResult.steps,
             status: 'done',
+            datasetVersions,
           })
         }
 
         // ── Add report record ──
         if (data.report?.should_record) {
           const now = new Date()
-          const time = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0')
+          const time =
+            now.getHours().toString().padStart(2, '0') +
+            ':' +
+            now.getMinutes().toString().padStart(2, '0')
 
           let chartData = null
           if (viz && viz.series) {
             chartData = {
               id: 0,
+              requestId: chartRecordId,
               query,
               type: viz.type || 'bar',
               altTypes: viz.alt_types || [],
@@ -98,6 +151,7 @@ export function useAnalysisStream() {
               series: viz.series || [],
               tableData: viz.table_data || null,
               status: 'done' as const,
+              datasetVersions,
             }
           }
 
@@ -111,30 +165,134 @@ export function useAnalysisStream() {
             evidence: data.report.evidence || null,
             starred: false,
             status: 'done',
+            datasetVersions,
           })
         }
       } catch {
-        setStatus(exchangeId, 'done')
+        useChatStore.getState().setStatus(projectId, sessionId, exchangeId, 'done')
+        useResultsStore.getState().removeChartRecord(chartRecordId)
       }
       eventSource.close()
-      activeSource.current = null
+      if (activeRun.current.exchangeId === exchangeId) {
+        clearActiveRun()
+      }
     })
 
     eventSource.addEventListener('error', (e) => {
       if (e instanceof MessageEvent) {
         try {
           const data = JSON.parse(e.data)
-          setError(exchangeId, data.message || 'Analysis failed')
+          useChatStore.getState().setError(
+            projectId,
+            sessionId,
+            exchangeId,
+            data.message || 'Analysis failed',
+          )
         } catch {
-          setError(exchangeId, 'Analysis failed')
+          useChatStore.getState().setError(projectId, sessionId, exchangeId, 'Analysis failed')
         }
       } else {
-        setError(exchangeId, 'Connection lost')
+        useChatStore.getState().setError(projectId, sessionId, exchangeId, 'Connection lost')
       }
+      useResultsStore.getState().removeChartRecord(chartRecordId)
       eventSource.close()
-      activeSource.current = null
+      if (activeRun.current.exchangeId === exchangeId) {
+        clearActiveRun()
+      }
     })
-  }, [addExchange, updateTrace, addSqlSteps, setReply, setStatus, setError])
+  }, [stop])
 
-  return { submit }
+  // ── continueAfterNullHandling — called when user confirms NullHandlingCard ──
+  const continueAfterNullHandling = useCallback(
+    async (
+      query: string,
+      projectId: string,
+      sessionId: string,
+      exchangeId: number,
+      config: NullHandlingConfig,
+      saveToFuture: boolean,
+    ) => {
+      // Persist preferences if requested
+      if (saveToFuture && Object.keys(config).length > 0) {
+        try {
+          await fetch(`/api/projects/${encodeURIComponent(projectId)}/null-prefs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config }),
+          })
+        } catch {
+          /* non-critical — ignore */
+        }
+      }
+
+      // Transition exchange: awaiting_null_handling → pending
+      useChatStore.getState().setStatus(projectId, sessionId, exchangeId, 'pending')
+
+      const chartRecordId = useResultsStore.getState().startChartRecord(query)
+      activeRun.current.chartRecordId = chartRecordId
+      activeRun.current.projectId = projectId
+      activeRun.current.sessionId = sessionId
+      activeRun.current.exchangeId = exchangeId
+
+      _startStream(query, projectId, sessionId, exchangeId, chartRecordId, config)
+    },
+    [_startStream],
+  )
+
+  // ── submit — entry point from user typing in ChatPanel ──
+  const submit = useCallback(
+    async (query: string, projectId: string) => {
+      if (activeRun.current.source) {
+        stop()
+      }
+
+      const { exchangeId, sessionId } = useChatStore.getState().addExchange(projectId, query)
+
+      // Pre-flight: detect sparse columns (fast schema scan, no LLM)
+      try {
+        const pf = await fetch(
+          `/api/analyze/preflight?project_id=${encodeURIComponent(projectId)}&query=${encodeURIComponent(query)}`,
+        )
+        if (pf.ok) {
+          const pfData = await pf.json()
+          const warnings: NullHandlingWarning[] = pfData?.data?.warnings ?? []
+          if (warnings.length > 0) {
+            // If every affected column already has a saved preference, apply silently without dialog.
+            const allSaved = warnings.every((w) => w.saved_preference != null)
+            if (allSaved) {
+              const autoConfig: NullHandlingConfig = {}
+              for (const w of warnings) autoConfig[w.column] = w.saved_preference!
+              const chartRecordId = useResultsStore.getState().startChartRecord(query)
+              activeRun.current.chartRecordId = chartRecordId
+              activeRun.current.projectId = projectId
+              activeRun.current.sessionId = sessionId
+              activeRun.current.exchangeId = exchangeId
+              _startStream(query, projectId, sessionId, exchangeId, chartRecordId, autoConfig)
+              return
+            }
+            // Some columns have no saved preference — show the dialog (saved prefs are pre-selected).
+            useChatStore.getState().setNullHandlingPending(projectId, sessionId, exchangeId, warnings)
+            activeRun.current.projectId = projectId
+            activeRun.current.sessionId = sessionId
+            activeRun.current.exchangeId = exchangeId
+            return
+          }
+        }
+      } catch {
+        /* preflight failure is non-fatal — proceed without dialog */
+      }
+
+      // No warnings → start stream immediately
+      const chartRecordId = useResultsStore.getState().startChartRecord(query)
+      activeRun.current.chartRecordId = chartRecordId
+      activeRun.current.projectId = projectId
+      activeRun.current.sessionId = sessionId
+      activeRun.current.exchangeId = exchangeId
+
+      _startStream(query, projectId, sessionId, exchangeId, chartRecordId)
+    },
+    [stop, _startStream],
+  )
+
+  return { submit, stop, continueAfterNullHandling }
 }

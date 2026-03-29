@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6333
     QDRANT_COLLECTION: str = "c2d_memory"
+    DUCKDB_DOC_DIR: str = "./doc/duckdb_official"
+    SQL_DOC_TOP_K: int = 3
 
     # ── Session Storage ──
     STORAGE_BACKEND: str = "local"

@@ -13,4 +13,5 @@ dependencies:
   - python=3.12
   - pip
   - pip:
+      - langdetect>=1.0.9
       - -e ".[dev]"    # Install project + dev dependencies from pyproject.toml

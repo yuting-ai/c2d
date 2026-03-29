@@ -42,10 +42,14 @@ class BlockingIssueSchema(BaseModel):
     options: list[ConversionOptionSchema]
 
 class WarningIssueSchema(BaseModel):
+    key: str
     column: str
     col_type: str
+    issue_type: str
+    severity: str
+    must_solve: bool = False
     description: str
-    options: list[str] | None = None
+    options: list[ConversionOptionSchema] | None = None
 
 class AutoConvertedSchema(BaseModel):
     column: str

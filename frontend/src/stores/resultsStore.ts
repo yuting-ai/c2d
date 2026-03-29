@@ -8,6 +8,7 @@ export interface ChartSeries {
 
 export interface ChartRecord {
   id: number
+  requestId: number | null
   query: string
   type: string
   altTypes: string[]
@@ -18,6 +19,7 @@ export interface ChartRecord {
   series: ChartSeries[]
   tableData: { headers: string[]; rows: any[][] } | null
   status: 'done' | 'running'
+  datasetVersions: Record<string, string>   // datasetId → versionId
 }
 
 export interface SqlRecord {
@@ -25,6 +27,7 @@ export interface SqlRecord {
   query: string
   steps: { title: string; sql: string; tag: string }[]
   status: 'done' | 'running'
+  datasetVersions: Record<string, string>
 }
 
 export interface EvidenceData {
@@ -42,10 +45,12 @@ export interface ReportRecord {
   evidence: EvidenceData | null          // null = no stats tests, don't show
   starred: boolean
   status: 'done' | 'running'
+  datasetVersions: Record<string, string>
 }
 
 interface ResultsStore {
-  activeTab: 'schema' | 'chart' | 'sql' | 'report'
+  activeTab: 'dataset' | 'schema' | 'chart' | 'sql' | 'report'
+  hasOpenedDatasetTab: boolean           // tracks first-open default logic
   chartRecords: ChartRecord[]
   sqlRecords: SqlRecord[]
   reportRecords: ReportRecord[]
@@ -54,7 +59,11 @@ interface ResultsStore {
   expandedReport: number | null
 
   setActiveTab: (tab: ResultsStore['activeTab']) => void
+  markDatasetTabOpened: () => void
   addChartRecord: (record: ChartRecord) => void
+  startChartRecord: (query: string) => number
+  finalizeChartRecord: (id: number, record: Omit<ChartRecord, 'id'>) => void
+  removeChartRecord: (id: number) => void
   switchChartView: (id: number, type: string) => void
   toggleChartEntry: (id: number) => void
   addSqlRecord: (record: SqlRecord) => void
@@ -69,7 +78,8 @@ let nextSqlId = 1
 let nextReportId = 1
 
 export const useResultsStore = create<ResultsStore>((set) => ({
-  activeTab: 'chart',
+  activeTab: 'dataset',
+  hasOpenedDatasetTab: false,
   chartRecords: [],
   sqlRecords: [],
   reportRecords: [],
@@ -77,16 +87,68 @@ export const useResultsStore = create<ResultsStore>((set) => ({
   expandedSql: null,
   expandedReport: null,
 
-  setActiveTab: (tab) => set({ activeTab: tab }),
+  setActiveTab: (tab) => set((s) => (s.activeTab === tab ? s : { activeTab: tab })),
+  markDatasetTabOpened: () => set({ hasOpenedDatasetTab: true }),
 
   addChartRecord: (record) => {
     const id = nextChartId++
     set((s) => ({
       chartRecords: [...s.chartRecords, { ...record, id }],
       expandedChart: id,
-      activeTab: 'chart',
+      // Only auto-switch to chart if the user has already seen the dataset tab
+      activeTab: s.hasOpenedDatasetTab ? 'chart' : s.activeTab,
     }))
   },
+
+  startChartRecord: (query) => {
+    const id = nextChartId++
+    set((s) => ({
+      chartRecords: [
+        ...s.chartRecords,
+        {
+          id,
+          requestId: id,
+          query,
+          type: 'bar',
+          altTypes: [],
+          activeType: 'bar',
+          title: query,
+          xLabel: '',
+          yLabel: '',
+          series: [],
+          tableData: null,
+          status: 'running',
+          datasetVersions: {},
+        },
+      ],
+      expandedChart: id,
+      activeTab: s.hasOpenedDatasetTab ? 'chart' : s.activeTab,
+    }))
+    return id
+  },
+
+  finalizeChartRecord: (id, record) =>
+    set((s) => {
+      const exists = s.chartRecords.some((r) => r.id === id)
+      if (!exists) {
+        return {
+          chartRecords: [...s.chartRecords, { ...record, id }],
+          expandedChart: id,
+          activeTab: s.hasOpenedDatasetTab ? 'chart' : s.activeTab,
+        }
+      }
+      return {
+        chartRecords: s.chartRecords.map((r) => (r.id === id ? { ...record, id } : r)),
+        expandedChart: id,
+        activeTab: s.hasOpenedDatasetTab ? 'chart' : s.activeTab,
+      }
+    }),
+
+  removeChartRecord: (id) =>
+    set((s) => ({
+      chartRecords: s.chartRecords.filter((r) => r.id !== id),
+      expandedChart: s.expandedChart === id ? null : s.expandedChart,
+    })),
 
   switchChartView: (id, type) =>
     set((s) => ({

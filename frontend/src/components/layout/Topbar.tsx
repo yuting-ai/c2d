@@ -4,7 +4,6 @@ import { useSchemaStore } from '../../stores/schemaStore'
 import { useProjectStore } from '../../stores/projectStore'
 
 export default function Topbar() {
-  const toggleSidebar = useUIStore((s) => s.toggleSidebar)
   const datasets = useSchemaStore((s) => s.datasets)
   const uploadDataset = useSchemaStore((s) => s.uploadDataset)
   const activeProjectId = useProjectStore((s) => s.activeProjectId)
@@ -21,9 +20,6 @@ export default function Topbar() {
 
   return (
     <div className="topbar">
-      <button className="sidebar-toggle" onClick={toggleSidebar} title="Toggle sidebar">
-        <span /><span /><span />
-      </button>
       <div className="logo">ana<em>lyst</em></div>
       <div className="divider" />
 

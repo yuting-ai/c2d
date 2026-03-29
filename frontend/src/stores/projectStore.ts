@@ -19,6 +19,7 @@ interface ProjectStore {
   createProject: (title: string, datasetName: string) => string
   updateProjectTitle: (id: string, title: string) => void
   addDatasetToProject: (projectId: string, datasetName: string) => void
+  upsertProject: (project: Project) => void
 }
 
 function generateId(): string {
@@ -84,4 +85,15 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           : p
       ),
     })),
+
+  upsertProject: (project) =>
+    set((s) => {
+      const idx = s.projects.findIndex((p) => p.id === project.id)
+      if (idx === -1) {
+        return { projects: [project, ...s.projects] }
+      }
+      const updated = [...s.projects]
+      updated[idx] = { ...updated[idx], ...project }
+      return { projects: updated }
+    }),
 }))

@@ -52,3 +52,187 @@ body {
   outline-offset: 3px;
   border-radius: 10px;
 }
+
+/* Recharts Brush labels (start/end values near handles) */
+.recharts-brush text {
+  fill: #b5bccb !important;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* Chart range control (single-line dual handle slider) */
+.c2d-range-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.c2d-range-track-wrap {
+  position: relative;
+  flex: 1;
+  height: 18px;
+}
+
+.c2d-range-track-bg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 6px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: var(--border2);
+  border: 1px solid var(--border);
+}
+
+.c2d-range-track-active {
+  position: absolute;
+  top: 50%;
+  height: 6px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(62,255,160,0.42), rgba(58,159,245,0.52));
+  box-shadow: 0 0 0 1px rgba(62,255,160,0.25);
+}
+
+.c2d-range-input {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.c2d-range-input::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 6px;
+}
+
+.c2d-range-input::-moz-range-track {
+  background: transparent;
+  height: 6px;
+  border: none;
+}
+
+.c2d-range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  width: 14px;
+  height: 14px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--bg1);
+  border: 2px solid var(--text2);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+.c2d-range-input::-moz-range-thumb {
+  pointer-events: auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg1);
+  border: 2px solid var(--text2);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+.c2d-range-input-end::-webkit-slider-thumb {
+  border-color: var(--green);
+  box-shadow: 0 0 0 1px rgba(62,255,160,0.28);
+}
+
+.c2d-range-input-end::-moz-range-thumb {
+  border-color: var(--green);
+  box-shadow: 0 0 0 1px rgba(62,255,160,0.28);
+}
+
+/* ── react-markdown + GFM (chat + report) ── */
+.c2d-markdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65em;
+  max-width: 100%;
+}
+.c2d-markdown p {
+  margin: 0;
+  font-size: inherit;
+  color: inherit;
+  line-height: inherit;
+}
+.c2d-markdown ul,
+.c2d-markdown ol {
+  margin: 0.2em 0 0.35em;
+  padding-left: 1.35em;
+}
+.c2d-markdown li {
+  margin: 0.25em 0;
+}
+.c2d-markdown strong {
+  color: var(--text1);
+  font-weight: 600;
+}
+.c2d-markdown code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  padding: 0.12em 0.35em;
+  border-radius: 4px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+}
+.c2d-markdown pre {
+  margin: 0.35em 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--bg0);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  max-width: 100%;
+}
+.c2d-markdown pre code {
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.c2d-markdown table {
+  width: max-content;
+  max-width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  margin: 0.4em 0;
+}
+.c2d-markdown th,
+.c2d-markdown td {
+  border: 1px solid var(--border2);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.c2d-markdown th {
+  background: var(--bg2);
+  color: var(--text2);
+  font-weight: 600;
+}
+.c2d-markdown td {
+  color: var(--text1);
+}
+.c2d-markdown hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.75em 0;
+}
+.report-conclusion-md {
+  overflow-x: auto;
+}

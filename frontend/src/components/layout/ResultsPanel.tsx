@@ -3,20 +3,30 @@ import ChartTab from '../results/chart/ChartTab'
 import SqlTab from '../results/sql/SqlTab'
 import ReportTab from '../results/report/ReportTab'
 import SchemaTab from '../results/SchemaTab'
+import DatasetTab from '../results/dataset/DatasetTab'
 
 const TABS = [
-  { key: 'schema', label: 'schema' },
-  { key: 'chart', label: 'chart' },
-  { key: 'sql', label: 'sql' },
-  { key: 'report', label: 'report' },
+  { key: 'dataset', label: 'dataset' },
+  { key: 'schema',  label: 'schema'  },
+  { key: 'chart',   label: 'chart'   },
+  { key: 'sql',     label: 'sql'     },
+  { key: 'report',  label: 'report'  },
 ] as const
 
 export default function ResultsPanel() {
-  const activeTab = useResultsStore((s) => s.activeTab)
-  const setTab = useResultsStore((s) => s.setActiveTab)
-  const chartCount = useResultsStore((s) => s.chartRecords.length)
-  const sqlCount = useResultsStore((s) => s.sqlRecords.length)
-  const reportCount = useResultsStore((s) => s.reportRecords.length)
+  const activeTab            = useResultsStore((s) => s.activeTab)
+  const setTab               = useResultsStore((s) => s.setActiveTab)
+  const markDatasetTabOpened = useResultsStore((s) => s.markDatasetTabOpened)
+  const chartCount           = useResultsStore((s) => s.chartRecords.length)
+  const sqlCount             = useResultsStore((s) => s.sqlRecords.length)
+  const reportCount          = useResultsStore((s) => s.reportRecords.length)
+
+  const handleTabClick = (key: typeof TABS[number]['key']) => {
+    setTab(key)
+    if (key === 'dataset') {
+      markDatasetTabOpened()
+    }
+  }
 
   return (
     <>
@@ -25,7 +35,7 @@ export default function ResultsPanel() {
           <div
             key={t.key}
             className={`tab ${activeTab === t.key ? 'active' : ''}`}
-            onClick={() => setTab(t.key)}
+            onClick={() => handleTabClick(t.key)}
           >
             {t.label}
             {t.key === 'chart' && chartCount > 0 && (
@@ -41,12 +51,17 @@ export default function ResultsPanel() {
         ))}
       </div>
 
-      <div className="results-body">
-        {activeTab === 'schema' && <SchemaTab />}
-        {activeTab === 'chart' && <ChartTab />}
-        {activeTab === 'sql' && <SqlTab />}
-        {activeTab === 'report' && <ReportTab />}
-      </div>
+      {/* Dataset tab hosts upload+cleaning on top and preview tools below */}
+      {activeTab === 'dataset' ? (
+        <DatasetTab />
+      ) : (
+        <div className="results-body">
+          {activeTab === 'schema' && <SchemaTab />}
+          {activeTab === 'chart'  && <ChartTab  />}
+          {activeTab === 'sql'    && <SqlTab    />}
+          {activeTab === 'report' && <ReportTab />}
+        </div>
+      )}
     </>
   )
 }

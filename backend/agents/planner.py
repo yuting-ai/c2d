@@ -11,17 +11,21 @@ from backend.graph.state import AgentState
 
 logger = logging.getLogger(__name__)
 
-# Keywords that strongly imply the user wants a chart / visualization
+# User-facing chart intent in Latin script (non-Latin queries rely on the planner model).
 _VIZ_KEYWORDS = re.compile(
-    r"绘制|图形|图表|可视化|画图|折线图|柱状图|饼图|散点图|趋势图|chart|graph|plot|visual|histogram|bar\s*chart|pie\s*chart|scatter|line\s*chart|trend",
+    r"\b(?:chart|graph|plot|visual(?:ization)?|figure|diagram|histogram|"
+    r"bar\s*chart|pie\s*chart|scatter(?:plot)?|line\s*chart|trend)\b",
     re.IGNORECASE,
 )
 
-# Pattern: "top N per [dimension]" — requires window function, NOT just LIMIT
-_TOP_N_PER_GROUP = re.compile(
-    r"(?:每|per\s+|each\s+)"   # 每年 / per year / each year
-    r".{0,10}"
-    r"(?:top|前|排名前|最.{0,4}的前)\s*\d+",
+# Queries that ALWAYS require data — never answer directly from schema.
+# Covers English + Chinese ranking/aggregation keywords.
+_REQUIRES_DATA_KEYWORDS = re.compile(
+    r"\b(?:top|bottom|rank(?:ing)?|most|least|best|worst|popular|"
+    r"how\s+many|count|total|sum|average|avg|median|"
+    r"compar(?:e|ison)|distribut(?:e|ion)|trend|percent(?:age)?|"
+    r"more\s+than|less\s+than|greater|highest|lowest|largest|smallest)\b"
+    r"|[\u4e00-\u9fff]",  # any Chinese character → treat as data query
     re.IGNORECASE,
 )
 
@@ -31,30 +35,47 @@ def _needs_viz(query: str) -> bool:
     return bool(_VIZ_KEYWORDS.search(query))
 
 
-def _is_top_n_per_group(query: str) -> bool:
-    """Detect 'top N per [dimension]' pattern — needs window function."""
-    return bool(_TOP_N_PER_GROUP.search(query))
+def _requires_data(query: str) -> bool:
+    """Detect if the query needs actual data retrieval (must not use direct_answer)."""
+    return bool(_REQUIRES_DATA_KEYWORDS.search(query))
 
 
 async def planner_agent(state: AgentState) -> dict:
     """Plan analysis: decide which agents to activate, or answer directly."""
 
-    # Build table context
+    # Build table context — include column types when available
     tables_text = ""
     for t in state.get("active_tables", []):
+        col_dicts = t.get("col_dicts")
+        if col_dicts:
+            col_str = ", ".join(f"{c['name']} ({c['type']})" for c in col_dicts)
+        else:
+            col_str = ", ".join(t.get("columns", []))
         tables_text += TABLE_SCHEMA_TEMPLATE.format(
             name=t["name"],
             row_count=t.get("row_count", "?"),
-            columns=", ".join(t.get("columns", [])),
+            columns=col_str,
         ) + "\n"
 
     quality_notes = "\n".join(state.get("quality_notes", [])) or "None"
 
     # Build prompt
     system = PLANNER_SYSTEM.format(
+        user_lang=state.get("user_lang", "en"),
         active_tables=tables_text.strip() or "No tables loaded",
         quality_notes=quality_notes,
     )
+
+    retry_count = state.get("retry_count", 0)
+    retry_target = state.get("retry_target")
+    critic_feedback = state.get("critic_feedback", "")
+    if retry_count > 0 and retry_target in {"planner", "both"} and critic_feedback:
+        system += (
+            "\n\n[!] PREVIOUS PLAN FAILED REVIEW.\n"
+            f"Reviewer feedback:\n{critic_feedback}\n"
+            "Revise the plan and SQL task so it addresses the original user intent exactly."
+        )
+        logger.info(f"Planner retry #{retry_count}, critic feedback: {critic_feedback[:200]}")
 
     llm = get_llm(temperature=0)
     response = await llm.ainvoke([
@@ -80,6 +101,14 @@ async def planner_agent(state: AgentState) -> dict:
     plan = parsed.get("plan", [])
     direct_answer = parsed.get("direct_answer")
     reasoning = parsed.get("reasoning", "")
+
+    # ── Safety net: if query requires data, never allow direct_answer ──
+    user_needs_data = _requires_data(state["user_query"])
+    if user_needs_data and not plan and direct_answer:
+        plan = ["sql", "viz"]
+        direct_answer = None
+        parsed["sql_task"] = parsed.get("sql_task") or state["user_query"]
+        logger.info("Planner override: query requires data but model gave direct_answer → forcing sql+viz")
 
     # ── Safety net: if user explicitly asks for a chart, ensure "viz" is in plan ──
     user_wants_viz = _needs_viz(state["user_query"])
@@ -128,20 +157,11 @@ async def planner_agent(state: AgentState) -> dict:
             "stream_events": [progress_event],
         }
 
-    # ── Inject window-function hint for "top N per group" queries ──
-    if _is_top_n_per_group(state["user_query"]):
-        hint = (
-            " [IMPORTANT: This requires a window function. "
-            "Use ROW_NUMBER() OVER (PARTITION BY <dimension> ORDER BY <metric> DESC) "
-            "inside a subquery, then filter WHERE rn <= N. "
-            "Do NOT use GROUP BY + LIMIT alone — that only gives overall top N, not per-group top N.]"
-        )
-        current_task = parsed.get("sql_task", state["user_query"])
-        parsed["sql_task"] = current_task + hint
-        logger.info("Planner: detected top-N-per-group pattern, injected window function hint")
-
     # ── Worker activation path ──
     sql_task = parsed.get("sql_task", state["user_query"])
+    intent_pattern = parsed.get("intent_pattern", "")
+    logger.info(f"Planner intent_pattern: {intent_pattern!r}")
+
     progress_event = {
         "type": "progress",
         "data": {
@@ -154,7 +174,8 @@ async def planner_agent(state: AgentState) -> dict:
 
     return {
         "plan": plan if plan else ["sql"],
-        "sql_task": parsed.get("sql_task", state["user_query"]),
+        "intent_pattern": intent_pattern,
+        "sql_task": sql_task,
         "viz_task": parsed.get("viz_task"),
         "stats_task": parsed.get("stats_task"),
         "involved_columns": parsed.get("involved_columns", []),

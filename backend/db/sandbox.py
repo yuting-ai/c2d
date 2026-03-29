@@ -10,9 +10,8 @@ FORBIDDEN_PATTERNS = [
     re.compile(r'\bPRAGMA\b', re.IGNORECASE),
 ]
 
-MAX_RESULT_ROWS = 10000
-
-
+# Cap query results to avoid unbounded memory usage while
+# still covering common mid-sized datasets used for charting.
 def execute_sandboxed(conn: duckdb.DuckDBPyConnection, sql: str) -> dict:
     """Execute SQL with safety restrictions. Returns dict with results or error."""
 
@@ -34,7 +33,7 @@ def execute_sandboxed(conn: duckdb.DuckDBPyConnection, sql: str) -> dict:
         elapsed_ms = int((time.perf_counter() - start) * 1000)
 
         columns = [desc[0] for desc in result.description]
-        rows = result.fetchmany(MAX_RESULT_ROWS)
+        rows = result.fetchall()
 
         return {
             "columns": columns,

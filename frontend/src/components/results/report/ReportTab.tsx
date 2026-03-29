@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import { useResultsStore, type ReportRecord, type ChartRecord, type EvidenceData } from '../../../stores/resultsStore'
 import { useProjectStore } from '../../../stores/projectStore'
+import { ChatMarkdown } from '../../chat/ChatMarkdown'
 
 const COLORS = ['#3effa0', '#3a9ff5', '#f0a83a', '#a57ef5', '#f06a6a', '#5eddd6', '#c4f23e']
 
@@ -113,6 +114,7 @@ function ReportSection({
           {rec.query}
         </span>
         <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--text3)' }}>{rec.time}</span>
+        <VersionBadge versions={rec.datasetVersions} />
         <button
           onClick={(e) => { e.stopPropagation(); toggleStar(rec.id) }}
           style={{
@@ -136,12 +138,15 @@ function ReportSection({
             </div>
           )}
 
-          {/* Conclusion */}
-          <div style={{
-            fontSize: 13.5, color: 'var(--text1)', lineHeight: 1.7,
-            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-          }}>
-            {rec.conclusion}
+          {/* Conclusion (Markdown tables, GFM) */}
+          <div
+            className="report-conclusion-md"
+            style={{
+              fontSize: 13.5, color: 'var(--text1)', lineHeight: 1.7,
+              wordBreak: 'break-word',
+            }}
+          >
+            <ChatMarkdown text={rec.conclusion} />
           </div>
 
           {/* Evidence section — only when stats tests exist */}
@@ -580,4 +585,30 @@ function exportSectionHtml(rec: ReportRecord, index: number) {
 
   const zip = miniZip(files)
   downloadBlob(zip, `${slug}.zip`)
+}
+
+// ── Version badge ──────────────────────────────────────────────
+
+function VersionBadge({ versions }: { versions: Record<string, string> }) {
+  const entries = Object.values(versions)
+  if (entries.length === 0) return null
+  return (
+    <>
+      {entries.map((vId) => (
+        <span
+          key={vId}
+          title={`Generated from dataset version ${vId}`}
+          style={{
+            fontFamily: 'var(--mono)', fontSize: 8.5,
+            padding: '1px 5px', borderRadius: 3,
+            border: '1px solid var(--green-border)',
+            background: 'var(--green-dim)', color: 'var(--green)',
+            whiteSpace: 'nowrap', opacity: 0.75,
+          }}
+        >
+          {vId}
+        </span>
+      ))}
+    </>
+  )
 }
