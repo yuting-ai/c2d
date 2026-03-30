@@ -197,6 +197,14 @@ HARD CONSTRAINTS (behavioral rules not covered by the RAG):
 
 4. Quote column names with " only when they contain spaces or special characters.
 
+5a. INTEGER / BIGINT year columns (e.g. columns named year, release_year, sale_year
+    that have type INTEGER or BIGINT and already store a 4-digit year number like 2015):
+    - Use them DIRECTLY — do NOT apply YEAR(), EXTRACT(YEAR FROM ...), ::DATE, or CAST(... AS DATE).
+    - Correct:  WHERE release_year >= 2015   GROUP BY release_year
+    - Wrong:    WHERE YEAR(release_year) >= 2015  ← BIGINT has no YEAR() function
+    - Wrong:    EXTRACT(YEAR FROM release_year::DATE)  ← BIGINT cannot be cast to DATE
+    Always check the column type in the Tables section above before applying date functions.
+
 5. Top-N ranking (choose by shape — do not default every top-N to a window):
    - **Multiple buckets** (e.g. each year, each region, "per X"): rank **inside** each bucket — use
      ROW_NUMBER() OVER (PARTITION BY bucket_key ORDER BY ...) AS rn, then QUALIFY rn <= N (no WITH/CTE).
@@ -227,36 +235,61 @@ LIMIT N;
 -- [!] CRITICAL: ORDER BY inside OVER must use the SELECT alias (e.g. cnt), NOT the
 --     aggregate expression (COUNT(*)).  Using aggregate expressions in OVER ORDER BY
 --     alongside GROUP BY causes a DuckDB Binder Error.
+--
+-- [!] YEAR COLUMN TYPE RULE:
+--     • If grp_year column is INTEGER/BIGINT (e.g. release_year stores 2015 as an integer):
+--         use the column directly — WHERE release_year >= 2015, GROUP BY release_year
+--     • If grp_year column is DATE/TIMESTAMP:
+--         use YEAR(date_col) or EXTRACT(YEAR FROM date_col) to get the year number
 
--- Option 1: CTE (readable, always works)
+-- Option 1: CTE — INTEGER year column (release_year is BIGINT, already a year number)
 WITH ranked AS (
   SELECT
-    YEAR(date_col)  AS grp_year,
+    release_year    AS grp_year,     -- INTEGER column used directly, no YEAR() needed
     category_col,
     COUNT(*)        AS cnt,          -- define alias first
     ROW_NUMBER() OVER (
-      PARTITION BY YEAR(date_col)
+      PARTITION BY release_year
       ORDER BY cnt DESC              -- [!] use alias here, NOT COUNT(*) DESC
     )               AS rn
   FROM tbl
-  WHERE YEAR(date_col) >= 2015
-  GROUP BY grp_year, category_col   -- DuckDB allows GROUP BY alias
+  WHERE release_year >= 2015
+  GROUP BY release_year, category_col
 )
 SELECT grp_year, category_col, cnt
 FROM ranked
 WHERE rn <= 5
 ORDER BY grp_year ASC, cnt DESC;
 
--- Option 2: QUALIFY (DuckDB-native, concise)
+-- Option 1b: CTE — DATE/TIMESTAMP year column (date_col is DATE or TIMESTAMP)
+WITH ranked AS (
+  SELECT
+    YEAR(date_col)  AS grp_year,     -- extract year from a DATE/TIMESTAMP column
+    category_col,
+    COUNT(*)        AS cnt,
+    ROW_NUMBER() OVER (
+      PARTITION BY YEAR(date_col)
+      ORDER BY cnt DESC
+    )               AS rn
+  FROM tbl
+  WHERE YEAR(date_col) >= 2015
+  GROUP BY grp_year, category_col
+)
+SELECT grp_year, category_col, cnt
+FROM ranked
+WHERE rn <= 5
+ORDER BY grp_year ASC, cnt DESC;
+
+-- Option 2: QUALIFY (DuckDB-native, concise) — INTEGER year column
 SELECT
-  YEAR(date_col)  AS grp_year,
+  release_year    AS grp_year,
   category_col,
   COUNT(*)        AS cnt
 FROM tbl
-WHERE YEAR(date_col) >= 2015
-GROUP BY grp_year, category_col
-QUALIFY ROW_NUMBER() OVER (PARTITION BY grp_year ORDER BY cnt DESC) <= 5
-ORDER BY grp_year ASC, cnt DESC;
+WHERE release_year >= 2015
+GROUP BY release_year, category_col
+QUALIFY ROW_NUMBER() OVER (PARTITION BY release_year ORDER BY cnt DESC) <= 5
+ORDER BY release_year ASC, cnt DESC;
 
 -- P-C: Time-series / trend
 SELECT

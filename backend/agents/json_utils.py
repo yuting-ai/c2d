@@ -72,6 +72,23 @@ def extract_json(text: str) -> dict | None:
     if obj is not None:
         return obj
 
+    # Strategy 6: fix literal newlines inside JSON string values, then retry
+    # Small models often write multi-line sql_task strings with real \n chars
+    fixed_nl = _fix_newlines_in_strings(text)
+    if fixed_nl != text:
+        obj = _try_parse(fixed_nl)
+        if obj is not None:
+            return obj
+        obj = _try_parse(_fix_json(fixed_nl))
+        if obj is not None:
+            return obj
+        # Also try extracting { ... } block after newline fix
+        match2 = re.search(r"\{[\s\S]*\}", fixed_nl)
+        if match2:
+            obj = _try_parse(_fix_json(match2.group(0)))
+            if obj is not None:
+                return obj
+
     logger.warning(f"All JSON extraction strategies failed. Text preview: {text[:200]}")
     return None
 
@@ -108,6 +125,35 @@ def _fix_json(text: str) -> str:
     if '"' not in text and "'" in text:
         text = text.replace("'", '"')
     return text
+
+
+def _fix_newlines_in_strings(text: str) -> str:
+    """Replace literal newlines/tabs inside JSON string values with their escape sequences.
+
+    Small models (especially when writing multi-line sql_task descriptions) often
+    emit real newline characters inside a JSON string, producing invalid JSON.
+    This function walks the text character-by-character and replaces bare \\n / \\r / \\t
+    that appear inside a quoted string with the proper JSON escape sequences.
+    """
+    result: list[str] = []
+    in_string = False
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        # Toggle in_string on unescaped double-quote
+        if ch == '"' and (i == 0 or text[i - 1] != '\\'):
+            in_string = not in_string
+            result.append(ch)
+        elif in_string and ch == '\n':
+            result.append('\\n')
+        elif in_string and ch == '\r':
+            result.append('\\r')
+        elif in_string and ch == '\t':
+            result.append('\\t')
+        else:
+            result.append(ch)
+        i += 1
+    return ''.join(result)
 
 
 def extract_sql(text: str) -> str | None:

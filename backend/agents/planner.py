@@ -11,10 +11,13 @@ from backend.graph.state import AgentState
 
 logger = logging.getLogger(__name__)
 
-# User-facing chart intent in Latin script (non-Latin queries rely on the planner model).
+# User-facing chart intent — Latin + Chinese keywords.
 _VIZ_KEYWORDS = re.compile(
     r"\b(?:chart|graph|plot|visual(?:ization)?|figure|diagram|histogram|"
-    r"bar\s*chart|pie\s*chart|scatter(?:plot)?|line\s*chart|trend)\b",
+    r"bar\s*chart|pie\s*chart|scatter(?:plot)?|line\s*chart|trend)\b"
+    r"|(?:图表|柱状图|折线图|饼图|散点图|条形图|面积图|热力图|"
+    r"可视化|对比图|分布图|趋势图|统计图|直方图|数据图|"
+    r"绘图|画图|作图|绘制|画出|可视图|展示图)",
     re.IGNORECASE,
 )
 
@@ -93,8 +96,9 @@ async def planner_agent(state: AgentState) -> dict:
 
     if parsed is None:
         logger.warning(f"Failed to parse planner output, falling back to default plan")
+        fallback_plan = ["sql", "viz"] if _needs_viz(state["user_query"]) else ["sql"]
         parsed = {
-            "plan": ["sql"],
+            "plan": fallback_plan,
             "sql_task": state["user_query"],
             "involved_columns": [],
             "reasoning": "Failed to parse planner output, falling back to SQL",

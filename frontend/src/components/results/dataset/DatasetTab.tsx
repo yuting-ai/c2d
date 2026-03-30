@@ -161,7 +161,7 @@ export default function DatasetTab() {
               }} />
               {d.name}
               <span style={{
-                fontSize: 10, color: d.id === dsId ? 'rgba(62,255,160,0.6)' : 'var(--text3)',
+                fontSize: 10, color: 'var(--text3)',
                 transition: 'color .15s',
               }}>
                 · {d.rowCount.toLocaleString()}

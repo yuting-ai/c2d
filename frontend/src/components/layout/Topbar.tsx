@@ -102,7 +102,7 @@ function DatasetChip({ name, rows, active }: { name: string; rows: string; activ
         <div style={{
           position: 'absolute', top: 1.5, left: active ? 12.5 : 1.5,
           width: 10, height: 10, borderRadius: '50%',
-          background: active ? '#0a1a13' : 'var(--bg1)',
+          background: 'var(--bg1)',
           transition: 'left 0.15s',
           boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
         }} />

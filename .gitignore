@@ -3,4 +3,4 @@ data/processed/
 data/exports/
 .env
 frontend/node_modules/
-.vscode/
+.vscode/.claude/

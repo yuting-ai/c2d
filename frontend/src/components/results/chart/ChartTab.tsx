@@ -6,8 +6,8 @@ import {
 } from 'recharts'
 import { useResultsStore, type ChartRecord, type ChartSeries } from '../../../stores/resultsStore'
 
-// Color palette matching dark theme
-const COLORS = ['#3effa0', '#3a9ff5', '#f0a83a', '#a57ef5', '#f06a6a', '#5eddd6', '#c4f23e']
+// Color palette for light theme
+const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4', '#84CC16']
 const TABLE_VIEW_MAX_ROWS = 50
 
 function renderCenteredYAxisLabel(props: any) {
@@ -190,7 +190,7 @@ function ChartEntry({
         title.setAttribute('y', String(Math.round(headerH / 2) + 1))
         title.setAttribute('text-anchor', 'middle')
         title.setAttribute('dominant-baseline', 'middle')
-        title.setAttribute('fill', '#3effa0')
+        title.setAttribute('fill', '#2563EB')
         title.setAttribute('font-family', 'IBM Plex Mono, monospace')
         title.setAttribute('font-size', '13')
         title.setAttribute('font-weight', '600')

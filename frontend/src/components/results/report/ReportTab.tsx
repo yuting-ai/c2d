@@ -8,7 +8,7 @@ import { useResultsStore, type ReportRecord, type ChartRecord, type EvidenceData
 import { useProjectStore } from '../../../stores/projectStore'
 import { ChatMarkdown } from '../../chat/ChatMarkdown'
 
-const COLORS = ['#3effa0', '#3a9ff5', '#f0a83a', '#a57ef5', '#f06a6a', '#5eddd6', '#c4f23e']
+const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4', '#84CC16']
 
 export default function ReportTab() {
   const records = useResultsStore((s) => s.reportRecords)
@@ -335,13 +335,13 @@ function EvidenceSection({ evidence }: { evidence: EvidenceData }) {
             }}>
               <span style={{
                 width: 6, height: 6, borderRadius: '50%',
-                background: test.significant ? 'var(--green, #3effa0)' : 'var(--text3, #4a4d58)',
+                background: test.significant ? 'var(--green)' : 'var(--text3)',
                 flexShrink: 0,
               }} />
-              <span style={{ color: 'var(--text2, #8a8c94)' }}>{test.key}</span>
+              <span style={{ color: 'var(--text2)' }}>{test.key}</span>
               <span style={{
                 marginLeft: 'auto',
-                color: test.significant ? 'var(--green, #3effa0)' : 'var(--text3, #4a4d58)',
+                color: test.significant ? 'var(--green)' : 'var(--text3)',
                 fontWeight: test.significant ? 500 : 400,
               }}>
                 {test.value}
@@ -385,7 +385,7 @@ function slugify(text: string): string {
 
 function buildChartSvg(chart: ChartRecord): string {
   const W = 600, H = 300, PAD = 50, PADT = 30
-  const colors = ['#3effa0', '#3a9ff5', '#f0a83a', '#a57ef5', '#f06a6a', '#5eddd6']
+  const colors = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4']
   const series = chart.series
   if (!series.length) return ''
 
@@ -400,14 +400,14 @@ function buildChartSvg(chart: ChartRecord): string {
   const scaleY = (v: number) => PADT + plotH - ((v - minY) / (maxY - minY)) * plotH
 
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`
-  svg += `<rect width="${W}" height="${H}" fill="#09090b"/>`
+  svg += `<rect width="${W}" height="${H}" fill="#FFFFFF"/>`
 
   // Grid lines
   for (let i = 0; i <= 4; i++) {
     const y = PADT + (plotH / 4) * i
     const val = maxY - ((maxY - minY) / 4) * i
-    svg += `<line x1="${PAD}" y1="${y}" x2="${W - PAD}" y2="${y}" stroke="#1f2128" stroke-dasharray="3,3"/>`
-    svg += `<text x="${PAD - 8}" y="${y + 3}" fill="#4a4d58" font-family="monospace" font-size="9" text-anchor="end">${Math.round(val).toLocaleString()}</text>`
+    svg += `<line x1="${PAD}" y1="${y}" x2="${W - PAD}" y2="${y}" stroke="#E2E5ED" stroke-dasharray="3,3"/>`
+    svg += `<text x="${PAD - 8}" y="${y + 3}" fill="#9CA3AF" font-family="monospace" font-size="9" text-anchor="end">${Math.round(val).toLocaleString()}</text>`
   }
 
   // X labels
@@ -415,7 +415,7 @@ function buildChartSvg(chart: ChartRecord): string {
   xLabels.forEach((label, i) => {
     if (i % step === 0 || i === xLabels.length - 1) {
       const x = scaleX(i)
-      svg += `<text x="${x}" y="${H - 10}" fill="#4a4d58" font-family="monospace" font-size="9" text-anchor="middle">${label}</text>`
+      svg += `<text x="${x}" y="${H - 10}" fill="#9CA3AF" font-family="monospace" font-size="9" text-anchor="middle">${label}</text>`
     }
   })
 
@@ -452,7 +452,7 @@ function buildChartSvg(chart: ChartRecord): string {
   series.forEach((s, si) => {
     const lx = PAD + si * 100
     svg += `<rect x="${lx}" y="${8}" width="10" height="10" fill="${colors[si % colors.length]}" rx="2"/>`
-    svg += `<text x="${lx + 14}" y="${16}" fill="#8a8c94" font-family="monospace" font-size="9">${s.name}</text>`
+    svg += `<text x="${lx + 14}" y="${16}" fill="#4B5563" font-family="monospace" font-size="9">${s.name}</text>`
   })
 
   svg += '</svg>'
@@ -468,29 +468,29 @@ function buildHtml(records: ReportRecord[], title: string): string {
 <title>${title}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #09090b; color: #e4e5e8; padding: 40px; max-width: 860px; margin: 0 auto; line-height: 1.7; }
-  h1 { font-size: 22px; font-weight: 500; margin-bottom: 6px; color: #e4e5e8; }
-  .meta { font-size: 12px; color: #4a4d58; margin-bottom: 30px; font-family: monospace; }
-  .section { border-top: 1px solid #1f2128; padding: 24px 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #F0F2F5; color: #111827; padding: 40px; max-width: 860px; margin: 0 auto; line-height: 1.7; }
+  h1 { font-size: 22px; font-weight: 500; margin-bottom: 6px; color: #111827; }
+  .meta { font-size: 12px; color: #9CA3AF; margin-bottom: 30px; font-family: monospace; }
+  .section { border-top: 1px solid #E2E5ED; padding: 24px 0; }
   .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-  .section-num { font-family: monospace; font-size: 11px; color: #4a4d58; }
-  .section-query { font-size: 15px; color: #e4e5e8; font-weight: 400; }
-  .section-time { font-family: monospace; font-size: 11px; color: #4a4d58; margin-left: auto; }
-  .chart-wrap { margin: 12px 0; border-radius: 6px; overflow: hidden; border: 1px solid #1f2128; }
+  .section-num { font-family: monospace; font-size: 11px; color: #9CA3AF; }
+  .section-query { font-size: 15px; color: #111827; font-weight: 400; }
+  .section-time { font-family: monospace; font-size: 11px; color: #9CA3AF; margin-left: auto; }
+  .chart-wrap { margin: 12px 0; border-radius: 6px; overflow: hidden; border: 1px solid #E2E5ED; background: #FFFFFF; }
   .chart-wrap img { width: 100%; display: block; }
-  .conclusion { font-size: 14px; color: #e4e5e8; line-height: 1.75; margin: 12px 0; }
-  .sql-block { background: #111318; border: 1px solid #1f2128; border-radius: 6px; margin: 10px 0; overflow: hidden; }
-  .sql-header { font-family: monospace; font-size: 10px; color: #4a4d58; padding: 4px 12px; border-bottom: 1px solid #1f2128; }
-  .sql-code { font-family: monospace; font-size: 11px; color: #8a8c94; padding: 10px 12px; white-space: pre-wrap; word-break: break-all; }
-  .evidence { background: rgba(240,168,58,0.06); border: 1px solid #3d3520; border-radius: 8px; margin: 10px 0; padding: 10px 14px; }
-  .evidence-header { font-family: monospace; font-size: 11px; color: #f0a83a; font-weight: 500; margin-bottom: 8px; }
-  .evidence-row { display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; color: #4a4d58; padding: 2px 0; }
-  .evidence-row.significant .evidence-val { color: #3effa0; font-weight: 500; }
-  .evidence-key { color: #8a8c94; }
-  .evidence-val { color: #4a4d58; }
-  .evidence-divider { border: none; border-top: 1px solid #1f2128; margin: 6px 0; }
-  .evidence-anomaly { font-family: monospace; font-size: 10px; color: #f0a83a; padding: 2px 0; }
-  .footer { border-top: 1px solid #1f2128; padding-top: 16px; margin-top: 20px; font-family: monospace; font-size: 10px; color: #4a4d58; }
+  .conclusion { font-size: 14px; color: #111827; line-height: 1.75; margin: 12px 0; }
+  .sql-block { background: #FFFFFF; border: 1px solid #E2E5ED; border-radius: 6px; margin: 10px 0; overflow: hidden; }
+  .sql-header { font-family: monospace; font-size: 10px; color: #9CA3AF; padding: 4px 12px; border-bottom: 1px solid #E2E5ED; }
+  .sql-code { font-family: monospace; font-size: 11px; color: #4B5563; padding: 10px 12px; white-space: pre-wrap; word-break: break-all; }
+  .evidence { background: rgba(217,119,6,0.05); border: 1px solid #FDE68A; border-radius: 8px; margin: 10px 0; padding: 10px 14px; }
+  .evidence-header { font-family: monospace; font-size: 11px; color: #D97706; font-weight: 500; margin-bottom: 8px; }
+  .evidence-row { display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; color: #4B5563; padding: 2px 0; }
+  .evidence-row.significant .evidence-val { color: #2563EB; font-weight: 500; }
+  .evidence-key { color: #9CA3AF; }
+  .evidence-val { color: #4B5563; }
+  .evidence-divider { border: none; border-top: 1px solid #E2E5ED; margin: 6px 0; }
+  .evidence-anomaly { font-family: monospace; font-size: 10px; color: #D97706; padding: 2px 0; }
+  .footer { border-top: 1px solid #E2E5ED; padding-top: 16px; margin-top: 20px; font-family: monospace; font-size: 10px; color: #9CA3AF; }
 </style>
 </head>
 <body>
