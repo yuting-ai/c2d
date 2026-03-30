@@ -1110,22 +1110,29 @@ function ChartRenderer({ record: rec, swapAxes }: { record: ChartRecord; swapAxe
       <div style={{ width: `${zoomLevel * 100}%`, minWidth: '100%', height: '100%' }}>
       <ResponsiveContainer width="100%" height="100%">
         {rec.activeType === 'line' ? (
-          <LineChart {...commonProps}>
+          <LineChart {...commonProps} layout={swapAxes ? 'vertical' : 'horizontal'}>
             <CartesianGrid {...gridStyle} />
             <XAxis
-              dataKey="x"
-              type="number"
+              {...(swapAxes
+                ? { type: 'number' as const, tickFormatter: formatYAxisTick }
+                : {
+                    dataKey: 'x',
+                    type: 'number' as const,
+                    tickFormatter: tickFormatX,
+                    domain: lineBarXStats ? [lineBarXStats.min, lineBarXStats.max] : undefined,
+                    ticks: lineBarXStats?.ticks,
+                  }
+              )}
               tick={tickStyle}
-              tickFormatter={tickFormatX}
-              domain={lineBarXStats ? [lineBarXStats.min, lineBarXStats.max] : undefined}
-              ticks={lineBarXStats?.ticks}
               axisLine={{ stroke: '#1f2128' }}
               label={{ value: xAxisLabel, position: 'insideBottom', offset: -2, fill: '#747b8b', fontSize: 10, fontFamily: 'IBM Plex Mono' }}
             />
             <YAxis
-              type="number"
+              {...(swapAxes
+                ? { type: 'category' as const, dataKey: 'x', tickFormatter: tickFormatX, width: 90 }
+                : { type: 'number' as const, tickFormatter: formatYAxisTick }
+              )}
               tick={tickStyle}
-              tickFormatter={formatYAxisTick}
               axisLine={{ stroke: '#1f2128' }}
               label={{ value: yAxisLabel, content: renderCenteredYAxisLabel }}
             />
@@ -1144,22 +1151,29 @@ function ChartRenderer({ record: rec, swapAxes }: { record: ChartRecord; swapAxe
             ))}
           </LineChart>
         ) : rec.activeType === 'area' ? (
-          <AreaChart {...commonProps}>
+          <AreaChart {...commonProps} layout={swapAxes ? 'vertical' : 'horizontal'}>
             <CartesianGrid {...gridStyle} />
             <XAxis
-              dataKey="x"
-              type="number"
+              {...(swapAxes
+                ? { type: 'number' as const, tickFormatter: formatYAxisTick }
+                : {
+                    dataKey: 'x',
+                    type: 'number' as const,
+                    tickFormatter: tickFormatX,
+                    domain: lineBarXStats ? [lineBarXStats.min, lineBarXStats.max] : undefined,
+                    ticks: lineBarXStats?.ticks,
+                  }
+              )}
               tick={tickStyle}
-              tickFormatter={tickFormatX}
-              domain={lineBarXStats ? [lineBarXStats.min, lineBarXStats.max] : undefined}
-              ticks={lineBarXStats?.ticks}
               axisLine={{ stroke: '#1f2128' }}
               label={{ value: xAxisLabel, position: 'insideBottom', offset: -2, fill: '#747b8b', fontSize: 10, fontFamily: 'IBM Plex Mono' }}
             />
             <YAxis
-              type="number"
+              {...(swapAxes
+                ? { type: 'category' as const, dataKey: 'x', tickFormatter: tickFormatX, width: 90 }
+                : { type: 'number' as const, tickFormatter: formatYAxisTick }
+              )}
               tick={tickStyle}
-              tickFormatter={formatYAxisTick}
               axisLine={{ stroke: '#1f2128' }}
               label={{ value: yAxisLabel, content: renderCenteredYAxisLabel }}
             />

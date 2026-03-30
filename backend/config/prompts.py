@@ -93,19 +93,32 @@ sql_task must be a precise, machine-actionable specification:
 1. State the INTENT PATTERN (e.g. "P-B: top-N per group").
 2. Name the exact OUTPUT COLUMNS expected (name + what it represents).
 3. State filters, grouping keys, sort order, and N explicitly.
-4. For P-B: explicitly say "use ROW_NUMBER() OVER (PARTITION BY ...)".
+4. Choose the correct TOP-N implementation:
+   - Global TOP-N (single ranking across all rows, e.g. "top 5 genres by total sales"):
+     use GROUP BY + ORDER BY + LIMIT. Do NOT use ROW_NUMBER().
+   - Per-group TOP-N (ranking within each subgroup, e.g. "top 3 games per genre"):
+     use ROW_NUMBER() OVER (PARTITION BY group_col ORDER BY metric DESC).
+     Wrap in a subquery or use QUALIFY rn <= N.
 5. For P-D: say "use width_bucket() to bin [column]; output bin_range and frequency".
 6. For P-G: say "return raw pairs of [col_x, col_y]; no aggregation".
-7. Never leave output format ambiguous - the SQL Agent uses this spec directly.
+7. Describe WHAT data is needed, not HOW to implement it in SQL syntax.
+   Let the SQL Agent choose the exact syntax — only specify the logical requirement.
+8. Never leave output format ambiguous - the SQL Agent uses this spec directly.
 
-Good example:
-  "P-B: For each calendar year >= 2015, find the top 5 category_col values by cnt (COUNT(*)).
-   Output columns: year (integer), category_col (string), cnt (integer).
-   Use ROW_NUMBER() OVER (PARTITION BY year ORDER BY cnt DESC) to rank within each year.
-   Filter on the date/year column per schema. Return rows where rank <= 5, ordered by year ASC, cnt DESC."
+Good example (Global TOP-N):
+  "P-B: Return the top 5 genres by total sales across all records.
+   Output columns: genre (string), total_sales (double).
+   Group by genre, sum total_sales, order by total_sales DESC, limit 5."
 
-Bad example (too vague - SQL Agent cannot infer the window function):
-  "After 2015, for each period show top few categories"  (no year column, no metric, no window spec)
+Good example (Per-group TOP-N):
+  "P-B: For each calendar year >= 2015, find the top 5 genres by total sales.
+   Output columns: year (integer), genre (string), total_sales (double).
+   Use per-group ranking: ROW_NUMBER() OVER (PARTITION BY year ORDER BY total_sales DESC).
+   Return rows where rank <= 5, ordered by year ASC, total_sales DESC."
+
+Bad example:
+  "After 2015, for each period show top few categories"
+  (no year column, no metric, no distinction between global vs per-group ranking)
 
 ═══════════════════════════════════════════
 SECTION 5 - RESPONSE FORMAT

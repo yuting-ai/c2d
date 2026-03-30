@@ -1,27 +1,42 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg0: #09090b;
-  --bg1: #0d0d10;
-  --bg2: #111318;
-  --bg3: #161820;
-  --border: #1f2128;
-  --border2: #272a33;
-  --text1: #e4e5e8;
-  --text2: #8a8c94;
-  --text3: #4a4d58;
-  --green: #3effa0;
-  --green-dim: #1a3d2c;
-  --green-border: #1f4d35;
-  --amber: #f0a83a;
-  --amber-dim: #2a1f08;
-  --amber-border: #3d2e0a;
-  --purple: #a57ef5;
-  --purple-dim: #1e1535;
-  --purple-border: #2e1f55;
-  --red: #f05a5a;
-  --mono: 'IBM Plex Mono', monospace;
-  --sans: 'DM Sans', sans-serif;
+  /* ── Backgrounds ── */
+  --bg0: #F0F2F5;   /* page / outermost layer     */
+  --bg1: #FFFFFF;   /* panel / card                */
+  --bg2: #F5F6F9;   /* nested area inside panel    */
+  --bg3: #EBEDF2;   /* inset / code block / hover  */
+
+  /* ── Borders ── */
+  --border:  #E2E5ED;
+  --border2: #D4D8E3;
+
+  /* ── Text ── */
+  --text1: #111827;
+  --text2: #4B5563;
+  --text3: #9CA3AF;
+
+  /* ── Primary: Blue ── */
+  --green: #2563EB;
+  --green-dim: #EFF4FF;
+  --green-border: #BFDBFE;
+
+  /* ── Amber ── */
+  --amber: #D97706;
+  --amber-dim: #FFFBEB;
+  --amber-border: #FDE68A;
+
+  /* ── Purple ── */
+  --purple: #7C3AED;
+  --purple-dim: #F5F3FF;
+  --purple-border: #DDD6FE;
+
+  /* ── Red ── */
+  --red: #DC2626;
+
+  /* ── Fonts ── */
+  --mono: 'DM Mono', monospace;
+  --sans: 'Sora', sans-serif;
 }
 
 html, body, #root { height: 100%; background: var(--bg0); }
@@ -39,6 +54,15 @@ body {
   overflow: hidden;
 }
 
+/* ── Blue accent bar at very top ── */
+#root::before {
+  content: '';
+  display: block;
+  height: 2px;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, #1D4ED8 0%, #2563EB 40%, #3B82F6 75%, #60A5FA 100%);
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 3px; }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
@@ -53,186 +77,88 @@ body {
   border-radius: 10px;
 }
 
-/* Recharts Brush labels (start/end values near handles) */
+/* Recharts Brush labels */
 .recharts-brush text {
-  fill: #b5bccb !important;
-  font-family: 'IBM Plex Mono', monospace;
+  fill: var(--text2) !important;
+  font-family: 'DM Mono', monospace;
   font-size: 10px;
   opacity: 1 !important;
   visibility: visible !important;
 }
 
-/* Chart range control (single-line dual handle slider) */
-.c2d-range-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.c2d-range-track-wrap {
-  position: relative;
-  flex: 1;
-  height: 18px;
-}
-
+/* Chart range control */
+.c2d-range-row { display: flex; align-items: center; gap: 10px; }
+.c2d-range-track-wrap { position: relative; flex: 1; height: 18px; }
 .c2d-range-track-bg {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 6px;
-  transform: translateY(-50%);
+  position: absolute; left: 0; right: 0; top: 50%;
+  height: 6px; transform: translateY(-50%);
   border-radius: 999px;
   background: var(--border2);
   border: 1px solid var(--border);
 }
-
 .c2d-range-track-active {
-  position: absolute;
-  top: 50%;
-  height: 6px;
-  transform: translateY(-50%);
+  position: absolute; top: 50%;
+  height: 6px; transform: translateY(-50%);
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(62,255,160,0.42), rgba(58,159,245,0.52));
-  box-shadow: 0 0 0 1px rgba(62,255,160,0.25);
+  background: linear-gradient(90deg, rgba(37,99,235,0.45), rgba(59,130,246,0.55));
+  box-shadow: 0 0 0 1px rgba(37,99,235,0.2);
 }
-
 .c2d-range-input {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  background: transparent;
-  pointer-events: none;
-  -webkit-appearance: none;
-  appearance: none;
+  position: absolute; left: 0; top: 0;
+  width: 100%; height: 100%; margin: 0;
+  background: transparent; pointer-events: none;
+  -webkit-appearance: none; appearance: none;
 }
-
-.c2d-range-input::-webkit-slider-runnable-track {
-  background: transparent;
-  height: 6px;
-}
-
-.c2d-range-input::-moz-range-track {
-  background: transparent;
-  height: 6px;
-  border: none;
-}
-
+.c2d-range-input::-webkit-slider-runnable-track { background: transparent; height: 6px; }
+.c2d-range-input::-moz-range-track { background: transparent; height: 6px; border: none; }
 .c2d-range-input::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  pointer-events: auto;
-  width: 14px;
-  height: 14px;
-  margin-top: -4px;
-  border-radius: 50%;
-  background: var(--bg1);
-  border: 2px solid var(--text2);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
-  cursor: pointer;
+  -webkit-appearance: none; appearance: none; pointer-events: auto;
+  width: 14px; height: 14px; margin-top: -4px; border-radius: 50%;
+  background: var(--bg1); border: 2px solid var(--text2);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.12); cursor: pointer;
 }
-
 .c2d-range-input::-moz-range-thumb {
-  pointer-events: auto;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--bg1);
-  border: 2px solid var(--text2);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
-  cursor: pointer;
+  pointer-events: auto; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--bg1); border: 2px solid var(--text2);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.12); cursor: pointer;
 }
-
 .c2d-range-input-end::-webkit-slider-thumb {
   border-color: var(--green);
-  box-shadow: 0 0 0 1px rgba(62,255,160,0.28);
+  box-shadow: 0 0 0 2px rgba(37,99,235,0.18);
 }
-
 .c2d-range-input-end::-moz-range-thumb {
   border-color: var(--green);
-  box-shadow: 0 0 0 1px rgba(62,255,160,0.28);
+  box-shadow: 0 0 0 2px rgba(37,99,235,0.18);
 }
 
-/* ── react-markdown + GFM (chat + report) ── */
-.c2d-markdown {
-  display: flex;
-  flex-direction: column;
-  gap: 0.65em;
-  max-width: 100%;
-}
-.c2d-markdown p {
-  margin: 0;
-  font-size: inherit;
-  color: inherit;
-  line-height: inherit;
-}
-.c2d-markdown ul,
-.c2d-markdown ol {
-  margin: 0.2em 0 0.35em;
-  padding-left: 1.35em;
-}
-.c2d-markdown li {
-  margin: 0.25em 0;
-}
-.c2d-markdown strong {
-  color: var(--text1);
-  font-weight: 600;
-}
+/* ── react-markdown + GFM ── */
+.c2d-markdown { display: flex; flex-direction: column; gap: 0.65em; max-width: 100%; }
+.c2d-markdown p { margin: 0; font-size: inherit; color: inherit; line-height: inherit; }
+.c2d-markdown ul, .c2d-markdown ol { margin: 0.2em 0 0.35em; padding-left: 1.35em; }
+.c2d-markdown li { margin: 0.25em 0; }
+.c2d-markdown strong { color: var(--text1); font-weight: 600; }
 .c2d-markdown code {
-  font-family: var(--mono);
-  font-size: 0.9em;
-  padding: 0.12em 0.35em;
-  border-radius: 4px;
-  background: var(--bg2);
-  border: 1px solid var(--border);
+  font-family: var(--mono); font-size: 0.9em;
+  padding: 0.12em 0.35em; border-radius: 4px;
+  background: var(--bg2); border: 1px solid var(--border);
+  color: var(--green);
 }
 .c2d-markdown pre {
-  margin: 0.35em 0;
-  padding: 10px 12px;
-  border-radius: 6px;
-  background: var(--bg0);
-  border: 1px solid var(--border);
-  overflow-x: auto;
-  max-width: 100%;
+  margin: 0.35em 0; padding: 10px 12px; border-radius: 6px;
+  background: var(--bg3); border: 1px solid var(--border);
+  overflow-x: auto; max-width: 100%;
 }
 .c2d-markdown pre code {
-  padding: 0;
-  border: none;
-  background: transparent;
-  font-size: 11px;
-  line-height: 1.55;
+  padding: 0; border: none; background: transparent;
+  font-size: 11px; line-height: 1.55; color: var(--text1);
 }
 .c2d-markdown table {
-  width: max-content;
-  max-width: 100%;
-  border-collapse: collapse;
-  font-family: var(--mono);
-  font-size: 11.5px;
-  margin: 0.4em 0;
+  width: max-content; max-width: 100%; border-collapse: collapse;
+  font-family: var(--mono); font-size: 11.5px; margin: 0.4em 0;
 }
 .c2d-markdown th,
-.c2d-markdown td {
-  border: 1px solid var(--border2);
-  padding: 6px 10px;
-  text-align: left;
-  vertical-align: top;
-}
-.c2d-markdown th {
-  background: var(--bg2);
-  color: var(--text2);
-  font-weight: 600;
-}
-.c2d-markdown td {
-  color: var(--text1);
-}
-.c2d-markdown hr {
-  border: none;
-  border-top: 1px solid var(--border);
-  margin: 0.75em 0;
-}
-.report-conclusion-md {
-  overflow-x: auto;
-}
+.c2d-markdown td { border: 1px solid var(--border2); padding: 6px 10px; text-align: left; vertical-align: top; }
+.c2d-markdown th { background: var(--bg2); color: var(--text2); font-weight: 600; }
+.c2d-markdown td { color: var(--text1); }
+.c2d-markdown hr { border: none; border-top: 1px solid var(--border); margin: 0.75em 0; }
+.report-conclusion-md { overflow-x: auto; }

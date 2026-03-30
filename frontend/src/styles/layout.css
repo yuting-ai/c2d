@@ -502,7 +502,7 @@ body.resizing .sidebar-wrap { transition: none !important; }
   line-height: 1.2;
   padding: 5px 10px;
   border-radius: 999px;
-  border: 1px solid #2a3344;
+  border: 1px solid var(--border);
   background: transparent;
   color: var(--text3);
   cursor: pointer;
@@ -511,20 +511,20 @@ body.resizing .sidebar-wrap { transition: none !important; }
 }
 
 .chat-hint-chip:hover {
-  border-color: #4a5d7c;
+  border-color: var(--border2);
   color: var(--text2);
 }
 
 .input-row {
   display: flex; align-items: center; gap: 10px;
-  background: #141820;
-  border: 1px solid #2d3848;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
   border-radius: 22px;
   padding: 8px 8px 8px 16px;
   transition: border-color 0.16s ease;
 }
 .input-row:focus-within {
-  border-color: #4a5d7c;
+  border-color: var(--border2);
 }
 .input-row input,
 .input-row textarea {
@@ -567,20 +567,20 @@ body.resizing .sidebar-wrap { transition: none !important; }
   opacity: 0.35;
   cursor: not-allowed;
 }
-.send-btn svg { width: 14px; height: 14px; fill: none; stroke: #060f09; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.send-btn svg { width: 14px; height: 14px; fill: none; stroke: #FFFFFF; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .send-btn.stop-btn {
-  background: #273042;
-  border: 1px solid #3a465c;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
 .send-btn.stop-btn:hover {
-  background: #303a4d;
-  border-color: #4a5974;
+  background: var(--bg2);
+  border-color: var(--border2);
 }
 .send-btn.stop-btn svg {
   width: 11px; height: 11px;
   stroke: none;
-  fill: #f2f5fb;
+  fill: var(--text1);
 }
 
 .input-meta {
@@ -591,7 +591,7 @@ body.resizing .sidebar-wrap { transition: none !important; }
 .input-meta-tip {
   font-family: var(--mono);
   font-size: 9.8px;
-  color: #8193af;
+  color: var(--text3);
   letter-spacing: 0.01em;
 }
 

@@ -1,7 +1,7 @@
 /* ══ SCHEMA PANEL ══ */
 .schema-panel {
   border-bottom: 1px solid var(--border);
-  background: var(--bg0);
+  background: var(--bg1);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -30,7 +30,7 @@
   flex-shrink: 0;
   user-select: none;
   transition: background 0.12s;
-  background: var(--bg0);
+  background: var(--bg1);
 }
 .sp-header:hover { background: var(--bg2); }
 
@@ -80,13 +80,13 @@
 .sp-footer {
   flex-shrink: 0;
   padding: 0 14px 12px;
-  background: var(--bg0);
+  background: var(--bg1);
 }
 
 .sp-action-top {
   position: static;
   flex-shrink: 0;
-  background: var(--bg0);
+  background: var(--bg1);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
@@ -141,7 +141,7 @@
 /* ── Blocking row ── */
 .blocking-row {
   background: var(--bg1);
-  border: 1px solid #3a1818;
+  border: 1px solid #FECACA;
   border-left: 3px solid var(--red);
   border-radius: 7px;
   padding: 10px 12px;
@@ -210,7 +210,7 @@
   padding: 2px 8px;
   border-radius: 6px;
   border: 1px solid var(--border2);
-  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0));
+  background: none;
 }
 .dtype-pill-icon {
   font-size: 10px;
@@ -218,24 +218,24 @@
   opacity: 0.92;
 }
 .dtype-pill--text {
-  color: #8ec5ff;
-  border-color: #274b70;
-  background-color: #0f1b2a;
+  color: #3B5EDB;
+  border-color: #BFCFEE;
+  background-color: #EFF4FF;
 }
 .dtype-pill--number {
-  color: #7fffbf;
-  border-color: #21553f;
-  background-color: #0f231a;
+  color: #16A34A;
+  border-color: #BBF7D0;
+  background-color: #F0FDF4;
 }
 .dtype-pill--date {
-  color: #ffd37a;
-  border-color: #5a4320;
-  background-color: #261c0f;
+  color: #B45309;
+  border-color: #FDE68A;
+  background-color: #FFFBEB;
 }
 .dtype-pill--bool {
-  color: #d8b5ff;
-  border-color: #4a2f67;
-  background-color: #1f142c;
+  color: #6D28D9;
+  border-color: #DDD6FE;
+  background-color: #F5F3FF;
 }
 .dtype-pill--other {
   color: var(--text2);
@@ -366,7 +366,7 @@
   border-radius: 8px;
   border: none;
   background: var(--green);
-  color: #060f09;
+  color: #FFFFFF;
   font-family: var(--mono);
   font-size: 12px;
   font-weight: 500;

@@ -19,9 +19,9 @@
   max-width: 82%;
   padding: 8px 14px;
   border-radius: 18px 18px 4px 18px;
-  background: #1e2436;
+  background: var(--bg2);
   font-size: 13px;
-  color: #c5cee0;
+  color: var(--text1);
   line-height: 1.6;
   word-break: break-word;
 }
@@ -53,7 +53,7 @@
   font-family: var(--mono);
   font-size: 10px;
   font-weight: 600;
-  color: #060f09;
+  color: #FFFFFF;
   flex-shrink: 0;
 }
 .analyst-name {
@@ -161,7 +161,7 @@
 }
 .step-dot.waiting {
   background: transparent;
-  border: 1.5px solid #3a4760;
+  border: 1.5px solid var(--border2);
 }
 
 @keyframes blink {
@@ -170,10 +170,10 @@
 }
 
 /* ── Step text ── */
-.step-text { color: #64748b; transition: color 0.12s ease; }
-.thinking-step.done .step-text { color: #7b8798; }
-.thinking-step.active .step-text { color: #cfd8e6; }
-.thinking-step.waiting .step-text { color: #5d6a7f; }
+.step-text { color: var(--text3); transition: color 0.12s ease; }
+.thinking-step.done .step-text { color: var(--text3); }
+.thinking-step.active .step-text { color: var(--text1); }
+.thinking-step.waiting .step-text { color: var(--text3); }
 
 /* ══ REPLY ══ */
 .analyst-reply {
@@ -204,7 +204,7 @@
 }
 .chat-md-p strong,
 .chat-md-li strong {
-  color: #e2e8f0;
+  color: var(--text1);
   font-weight: 600;
 }
 .chat-md-ul {
@@ -217,7 +217,7 @@
   padding-left: 0.2em;
 }
 .chat-md-li::marker {
-  color: #64748b;
+  color: var(--text3);
 }
 /* ══ REPLY ACTION BAR ══ */
 .reply-actions {
@@ -234,14 +234,14 @@
   border-radius: 6px;
   border: none;
   background: transparent;
-  color: #5a6a82;
+  color: var(--text3);
   cursor: pointer;
   transition: color 0.12s ease, background 0.12s ease;
   padding: 0;
 }
 .reply-action-btn:hover {
   color: var(--text1);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--bg2);
 }
 .reply-action-btn.copied {
   color: var(--green);
@@ -256,8 +256,8 @@
 }
 
 .sql-block {
-  background: #0f1520;
-  border: 1px solid #242f42;
+  background: var(--bg3);
+  border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
   animation: replyFadeIn 0.2s ease-out;
@@ -267,16 +267,16 @@
   align-items: center;
   justify-content: space-between;
   padding: 5px 10px;
-  border-bottom: 1px solid #1e2a3d;
+  border-bottom: 1px solid var(--border);
   font-family: var(--mono);
   font-size: 9.5px;
-  color: #7e93b0;
+  color: var(--text3);
 }
 .sql-block-code {
   padding: 10px 12px;
   font-family: var(--mono);
   font-size: 10.5px;
-  color: #b8c8de;
+  color: var(--text2);
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-all;
@@ -285,7 +285,7 @@
 }
 
 .copy-mini-btn {
-  border: 1px solid #2d3a50;
+  border: 1px solid var(--border2);
   background: transparent;
   color: var(--text3);
   border-radius: 5px;
@@ -297,11 +297,11 @@
   transition: all 0.12s ease;
 }
 .copy-mini-btn:hover {
-  border-color: #4a5d7c;
+  border-color: var(--border2);
   color: var(--text2);
 }
 .copy-mini-btn.copied {
-  border-color: rgba(62, 255, 160, 0.4);
+  border-color: var(--green-border);
   color: var(--green);
 }
 
@@ -309,9 +309,9 @@
 .analyst-error {
   font-family: var(--mono);
   font-size: 12px;
-  color: #f87171;
+  color: var(--red);
   padding: 8px 12px;
-  border-left: 2px solid #f87171;
+  border-left: 2px solid var(--red);
   animation: replyFadeIn 0.3s ease-out;
 }
 
@@ -325,7 +325,7 @@
 .null-card {
   border: 1px solid var(--border2);
   border-radius: 10px;
-  background: linear-gradient(160deg, rgba(30, 40, 58, 0.85), rgba(15, 21, 32, 0.92));
+  background: var(--bg1);
   overflow: hidden;
   animation: replyFadeIn 0.22s ease-out;
   font-size: 13px;
@@ -336,7 +336,7 @@
   align-items: flex-start;
   gap: 10px;
   padding: 14px 16px 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--border);
 }
 
 .null-card-icon {
@@ -370,7 +370,7 @@
 }
 
 .null-col-group {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--border);
 }
 
 .null-col-group:last-child {
@@ -392,7 +392,7 @@
 }
 
 .null-col-header:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--bg2);
 }
 
 .null-col-meta {
@@ -480,13 +480,13 @@
 }
 
 .null-option:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg2);
   border-color: var(--border);
 }
 
 .null-option.selected {
-  background: rgba(62, 255, 160, 0.06);
-  border-color: rgba(62, 255, 160, 0.25);
+  background: var(--green-dim);
+  border-color: var(--green-border);
 }
 
 .null-option input[type="radio"] {
@@ -521,8 +521,8 @@
   font-size: 9px;
   font-weight: 600;
   color: var(--green);
-  background: rgba(62, 255, 160, 0.12);
-  border: 1px solid rgba(62, 255, 160, 0.2);
+  background: var(--green-dim);
+  border: 1px solid var(--green-border);
   border-radius: 4px;
   padding: 1px 6px;
   letter-spacing: 0.04em;
@@ -538,7 +538,7 @@
 /* ── Footer ── */
 .null-card-footer {
   padding: 12px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -590,8 +590,8 @@
 
 .null-btn-primary {
   background: var(--green);
-  border: 1px solid var(--green-border, rgba(62, 255, 160, 0.4));
-  color: #07120a;
+  border: 1px solid var(--green-border);
+  color: #FFFFFF;
   font-family: var(--mono);
   font-size: 11.5px;
   font-weight: 600;
@@ -610,7 +610,7 @@
   font-family: var(--mono);
   font-size: 10.5px;
   color: var(--text3);
-  border-left: 2px solid rgba(62, 255, 160, 0.3);
+  border-left: 2px solid var(--green-border);
   padding: 4px 10px;
   line-height: 1.5;
   animation: replyFadeIn 0.25s ease-out;

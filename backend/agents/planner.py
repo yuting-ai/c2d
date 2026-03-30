@@ -25,7 +25,9 @@ _REQUIRES_DATA_KEYWORDS = re.compile(
     r"how\s+many|count|total|sum|average|avg|median|"
     r"compar(?:e|ison)|distribut(?:e|ion)|trend|percent(?:age)?|"
     r"more\s+than|less\s+than|greater|highest|lowest|largest|smallest)\b"
-    r"|[\u4e00-\u9fff]",  # any Chinese character → treat as data query
+    r"|(?:最多|最少|最高|最低|最大|最小|排名|排行|总计|总数|"
+    r"平均|趋势|比较|对比|分布|占比|百分比|多少|数量|销量|销售额|"
+    r"top\s*\d+|前\s*\d+|增长|下降|受欢迎|热门|畅销)",  
     re.IGNORECASE,
 )
 
