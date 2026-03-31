@@ -431,7 +431,7 @@ Important anti-false-positive rules:
 - For simple global TOP-N queries (e.g. "top 5 genres by total sales"), ORDER BY + LIMIT is correct and sufficient. Do NOT flag this as requiring a window function. Window functions (ROW_NUMBER/RANK) are only needed when ranking WITHIN partitions (e.g. top 3 games per genre).
 - If the SQL uses ROW_NUMBER() OVER (PARTITION BY x ORDER BY SUM(y)) inside a GROUP BY query and gets a DuckDB Binder Error, the fix is to remove the window function entirely and use ORDER BY + LIMIT instead — do NOT suggest adding more columns to GROUP BY.
 - Do NOT retry solely because a window function is absent in a TOP-N query — absence of ROW_NUMBER/RANK is correct behavior for global ranking.
-- For P-G (scatter/correlation) queries: SQL returning raw {col_x, col_y} pairs is CORRECT. Do NOT ask for SQL to compute p-values or Pearson r — that is stats_agent's job. If stats_agent already returned pearson_r/p_value/significant/outlier_count, verdict MUST be pass.
+- For P-G (scatter/correlation) queries: SQL returning raw {{col_x, col_y}} pairs is CORRECT. Do NOT ask for SQL to compute p-values or Pearson r — that is stats_agent's job. If stats_agent already returned pearson_r/p_value/significant/outlier_count, verdict MUST be pass.
 
 Data sparsity rule (CRITICAL — apply before deciding verdict):
 - If the SQL is structurally correct (right GROUP BY, right aggregate function, right WHERE filters) but the result has many NULL/None values in metric columns, this almost always means the SOURCE DATASET simply lacks records for those time periods — it is NOT a SQL bug.
