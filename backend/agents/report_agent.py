@@ -4,7 +4,7 @@ import logging
 from collections import defaultdict
 
 from langchain_core.messages import SystemMessage, HumanMessage
-from backend.agents.base import get_llm, no_think
+from backend.agents.base import get_llm
 from backend.config.prompts import REPORT_SYSTEM
 from backend.graph.state import AgentState
 
@@ -521,7 +521,7 @@ async def report_agent(state: AgentState) -> dict:
     llm = get_llm(temperature=0)
     response = await llm.ainvoke(
         [
-            SystemMessage(content=no_think(prompt)),
+            SystemMessage(content=prompt),
             HumanMessage(
                 content=(
                     "Write the report (Parts 1-4): two-line title+scope; Part 2 = **prose/bullets only** - "

@@ -3,7 +3,7 @@
 import json
 import logging
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-from backend.agents.base import get_llm, no_think
+from backend.agents.base import get_llm
 from backend.agents.json_utils import extract_json
 from backend.config.prompts import VIZ_SYSTEM
 from backend.graph.state import AgentState
@@ -375,7 +375,7 @@ async def viz_agent(state: AgentState) -> dict:
     llm = get_llm(temperature=0)
 
     messages = [
-        SystemMessage(content=no_think(prompt)),
+        SystemMessage(content=prompt),
         HumanMessage(content="Generate the chart data now. Output ONLY valid JSON, no explanation."),
     ]
 

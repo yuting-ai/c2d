@@ -8,28 +8,6 @@ _runtime_provider: str | None = None
 _runtime_model: str | None = None
 
 
-def _is_qwen3() -> bool:
-    """Return True if the active model is Qwen3 (supports /no_think directive)."""
-    provider = _runtime_provider or settings.LLM_PROVIDER
-    if provider != "ollama":
-        return False
-    model = (_runtime_model or settings.OLLAMA_MODEL).lower()
-    return "qwen3" in model
-
-
-def no_think(system_content: str) -> str:
-    """Prepend /no_think for Qwen3 models to disable the thinking chain.
-
-    Call this on the system prompt of agents that don't need reasoning
-    (Planner, Viz, Critic, Report). Do NOT call it in SQL Agent — that
-    one benefits from thinking for complex query generation.
-
-    For non-Qwen3 models this is a no-op.
-    """
-    if _is_qwen3():
-        return "/no_think\n" + system_content
-    return system_content
-
 
 def set_provider(provider: str, model: str | None = None):
     """Switch LLM provider at runtime. Takes effect on next get_llm() call."""

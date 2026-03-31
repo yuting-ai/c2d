@@ -4,7 +4,7 @@ import json
 import re
 import logging
 from langchain_core.messages import SystemMessage, HumanMessage
-from backend.agents.base import get_llm, no_think
+from backend.agents.base import get_llm
 from backend.agents.json_utils import extract_json
 from backend.config.prompts import PLANNER_SYSTEM, TABLE_SCHEMA_TEMPLATE
 from backend.graph.state import AgentState
@@ -84,7 +84,7 @@ async def planner_agent(state: AgentState) -> dict:
 
     llm = get_llm(temperature=0)
     response = await llm.ainvoke([
-        SystemMessage(content=no_think(system)),
+        SystemMessage(content=system),
         HumanMessage(content=state["user_query"]),
     ])
 
