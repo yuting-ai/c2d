@@ -49,7 +49,7 @@ export interface ReportRecord {
 }
 
 interface ResultsStore {
-  activeTab: 'dataset' | 'schema' | 'chart' | 'sql' | 'report'
+  activeTab: 'dataset' | 'schema' | 'analysis'
   hasOpenedDatasetTab: boolean           // tracks first-open default logic
   chartRecords: ChartRecord[]
   sqlRecords: SqlRecord[]
@@ -96,7 +96,7 @@ export const useResultsStore = create<ResultsStore>((set) => ({
       chartRecords: [...s.chartRecords, { ...record, id }],
       expandedChart: id,
       // Only auto-switch to chart if the user has already seen the dataset tab
-      activeTab: s.hasOpenedDatasetTab ? 'chart' : s.activeTab,
+      activeTab: s.hasOpenedDatasetTab ? 'analysis' : s.activeTab,
     }))
   },
 
@@ -122,7 +122,7 @@ export const useResultsStore = create<ResultsStore>((set) => ({
         },
       ],
       expandedChart: id,
-      activeTab: s.hasOpenedDatasetTab ? 'chart' : s.activeTab,
+      activeTab: s.hasOpenedDatasetTab ? 'analysis' : s.activeTab,
     }))
     return id
   },
@@ -134,13 +134,13 @@ export const useResultsStore = create<ResultsStore>((set) => ({
         return {
           chartRecords: [...s.chartRecords, { ...record, id }],
           expandedChart: id,
-          activeTab: s.hasOpenedDatasetTab ? 'chart' : s.activeTab,
+          activeTab: s.hasOpenedDatasetTab ? 'analysis' : s.activeTab,
         }
       }
       return {
         chartRecords: s.chartRecords.map((r) => (r.id === id ? { ...record, id } : r)),
         expandedChart: id,
-        activeTab: s.hasOpenedDatasetTab ? 'chart' : s.activeTab,
+        activeTab: s.hasOpenedDatasetTab ? 'analysis' : s.activeTab,
       }
     }),
 

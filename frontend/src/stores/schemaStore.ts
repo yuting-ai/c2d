@@ -51,6 +51,7 @@ export interface DatasetState {
   warningIssues: WarningIssue[]
   autoConverted: AutoConverted[]
   confirmed: boolean
+  enabled: boolean  // whether this dataset is included in analysis queries
 }
 
 interface ActiveTable {
@@ -68,7 +69,6 @@ interface ProjectSchemaState {
 }
 
 interface SchemaStore {
-  analysisMode: 'simple' | 'advanced'
   datasets: DatasetState[]
   strategyVersion: number
   systemMode: 'empty' | 'clean' | 'chat'
@@ -85,13 +85,13 @@ interface SchemaStore {
   allResolved: () => boolean
 
   // Actions
-  setAnalysisMode: (mode: 'simple' | 'advanced') => void
   switchProject: (projectId: string | null) => void
   loadProjectSchema: (projectId: string) => Promise<void>
   uploadDataset: (projectId: string, file: File) => Promise<void>
   selectOption: (datasetId: string, column: string, option: string) => void
   selectWarningOption: (datasetId: string, warningKey: string, option: string) => void
   confirmSchema: (projectId: string) => Promise<void>
+  toggleDataset: (id: string) => void
   reset: () => void
 }
 
@@ -103,17 +103,6 @@ const EMPTY_STATE: ProjectSchemaState = {
 }
 
 const API_BASE = '/api'
-
-function getInitialAnalysisMode(): 'simple' | 'advanced' {
-  if (typeof window === 'undefined') return 'simple'
-  const raw = window.localStorage.getItem('c2d.analysisMode')
-  return raw === 'advanced' ? 'advanced' : 'simple'
-}
-
-function persistAnalysisMode(mode: 'simple' | 'advanced') {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem('c2d.analysisMode', mode)
-}
 
 function pickOption(options: Array<{ value: string; label: string }> | null | undefined, preferred: string[]): string | null {
   if (!options || options.length === 0) return null
@@ -140,7 +129,6 @@ async function parseApiResponse(res: Response): Promise<any> {
 }
 
 export const useSchemaStore = create<SchemaStore>((set, get) => ({
-  analysisMode: getInitialAnalysisMode(),
   datasets: [],
   strategyVersion: 0,
   systemMode: 'empty',
@@ -157,11 +145,6 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       ds.blockingIssues.every((issue) => issue.resolved) &&
       ds.warningIssues.every((issue) => !issue.must_solve || Boolean(issue.selectedOption))
     )
-  },
-
-  setAnalysisMode: (mode) => {
-    persistAnalysisMode(mode)
-    set((s) => (s.analysisMode === mode ? s : { analysisMode: mode }))
   },
 
   switchProject: (projectId) => {
@@ -206,6 +189,12 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       }
 
       const d = json.data || {}
+      // Preserve client-side enabled state from cache (backend doesn't track this)
+      const existingCache = get()._cache[projectId]
+      const enabledMap = new Map<string, boolean>(
+        existingCache?.datasets.map((d) => [d.id, d.enabled]) ?? []
+      )
+
       const restoredDatasets: DatasetState[] = (d.datasets || []).map((ds: any) => ({
         id: ds.id,
         name: ds.name,
@@ -223,6 +212,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         warningIssues: [],
         autoConverted: [],
         confirmed: !!ds.confirmed,
+        enabled: enabledMap.get(ds.id) ?? true,
       }))
 
       const strategyVersion = d.strategy_version || 0
@@ -256,10 +246,9 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
   uploadDataset: async (projectId, file) => {
     set({ uploading: true, error: null })
 
-    const mode = get().analysisMode
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('analysis_mode', mode)
+    formData.append('analysis_mode', 'simple')
 
     try {
       const res = await fetch(`${API_BASE}/projects/${projectId}/datasets`, {
@@ -282,10 +271,8 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         sizeBytes: d.size_bytes,
         columns: d.columns,
         blockingIssues: d.blocking_issues.map((bi: any) => {
-          const defaultOption =
-            mode === 'simple'
-              ? pickOption(bi?.options, bi?.inferred_type === 'DATE' ? ['iso'] : ['null', 'keep_string'])
-              : pickOption(bi?.options, bi?.inferred_type === 'DATE' ? ['iso'] : [])
+          // Always pre-select recommended defaults (user must still click confirm)
+          const defaultOption = pickOption(bi?.options, bi?.inferred_type === 'DATE' ? ['iso'] : ['null', 'keep_string'])
           return {
             ...bi,
             selectedOption: defaultOption,
@@ -293,14 +280,13 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
           }
         }),
         warningIssues: (d.warning_issues || []).map((w: any) => {
+          // Pre-select sensible defaults; user reviews and confirms
           const defaultOption =
-            mode === 'simple'
-              ? (w?.issue_type === 'missing'
-                  ? pickOption(w?.options, ['keep', 'keep_null', 'unknown', 'mode'])
-                  : w?.issue_type === 'outlier'
-                    ? pickOption(w?.options, ['keep'])
-                    : null)
-              : null
+            w?.issue_type === 'missing'
+              ? pickOption(w?.options, ['keep', 'keep_null', 'unknown', 'mode'])
+              : w?.issue_type === 'outlier'
+                ? pickOption(w?.options, ['keep'])
+                : null
           return {
             ...w,
             must_solve: Boolean(w?.must_solve),
@@ -309,6 +295,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         }),
         autoConverted: d.auto_converted,
         confirmed: false,
+        enabled: true,
       }
 
       set((s) => {
@@ -319,11 +306,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         cache[projectId] = { datasets: newDatasets, strategyVersion: s.strategyVersion, systemMode: 'clean', activeTables: s.activeTables }
         return { ...newState, _cache: cache }
       })
-
-      // In simple mode, auto-apply defaults and confirm immediately.
-      if (mode === 'simple') {
-        await get().confirmSchema(projectId)
-      }
+      // User must explicitly click confirm — no auto-confirm here
     } catch (e: any) {
       set({ uploading: false, error: e.message || 'Network error' })
     }
@@ -469,6 +452,27 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     } catch (e: any) {
       set({ confirming: false, error: e.message || 'Network error' })
     }
+  },
+
+  toggleDataset: (id) => {
+    set((s) => {
+      const enabledCount = s.datasets.filter((d) => d.enabled).length
+      const target = s.datasets.find((d) => d.id === id)
+      // Prevent disabling the last active dataset
+      if (target?.enabled && enabledCount <= 1) return s
+
+      const newDatasets = s.datasets.map((ds) =>
+        ds.id === id ? { ...ds, enabled: !ds.enabled } : ds
+      )
+      const cache = { ...s._cache }
+      if (s._activeProjectId) {
+        cache[s._activeProjectId] = {
+          ...(cache[s._activeProjectId] ?? { strategyVersion: s.strategyVersion, systemMode: s.systemMode, activeTables: s.activeTables }),
+          datasets: newDatasets,
+        }
+      }
+      return { datasets: newDatasets, _cache: cache }
+    })
   },
 
   reset: () => set({

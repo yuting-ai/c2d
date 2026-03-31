@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react'
 import { useChatStore } from '../stores/chatStore'
 import { useResultsStore } from '../stores/resultsStore'
+import { useSchemaStore } from '../stores/schemaStore'
 import type { NullHandlingConfig, NullHandlingWarning } from '../components/chat/NullHandlingCard'
 
 export function useAnalysisStream() {
@@ -54,6 +55,14 @@ export function useAnalysisStream() {
     let url = `/api/analyze/stream?project_id=${encodeURIComponent(projectId)}&query=${encodeURIComponent(query)}`
     if (nullConfig && Object.keys(nullConfig).length > 0) {
       url += `&null_handling_config=${encodeURIComponent(JSON.stringify(nullConfig))}`
+    }
+    // Pass disabled dataset table names so backend can exclude them from the query context
+    const disabledTables = useSchemaStore.getState().datasets
+      .filter((ds) => !ds.enabled)
+      .map((ds) => ds.name.replace(/\.[^/.]+$/, ''))  // strip file extension to get table name
+      .filter(Boolean)
+    if (disabledTables.length > 0) {
+      url += `&excluded_tables=${encodeURIComponent(disabledTables.join(','))}`
     }
 
     const eventSource = new EventSource(url)

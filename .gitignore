@@ -4,3 +4,4 @@ data/exports/
 .env
 frontend/node_modules/
 .vscode/.claude/
+data/preferences/

@@ -1,9 +1,8 @@
 /**
- * VersionPanel — version history sidebar (Google-Doc-style)
+ * VersionPanel — version history sidebar (controlled).
  *
- * Shows a list of saved versions (newest first).
- * Clicking a version restores it after confirmation.
- * Includes a saving indicator.
+ * Always renders the full panel. The toggle button lives in DatasetTab's
+ * action bar; this component just receives an onClose callback.
  */
 
 import { useDatasetStore, type VersionEntry } from '../../../stores/datasetStore'
@@ -13,17 +12,18 @@ const EMPTY_VERSIONS: VersionEntry[] = []
 interface VersionPanelProps {
   projectId: string
   datasetId: string
+  onClose: () => void
 }
 
-export default function VersionPanel({ projectId, datasetId }: VersionPanelProps) {
+export default function VersionPanel({ projectId, datasetId, onClose }: VersionPanelProps) {
   const versionsByDataset = useDatasetStore((s) => s.versions)
   const versions          = versionsByDataset[datasetId] ?? EMPTY_VERSIONS
-  const versionsLoading = useDatasetStore((s) => s.versionsLoading[datasetId] ?? false)
-  const saving          = useDatasetStore((s) => s.saving)
-  const lastSavedAt     = useDatasetStore((s) => s.lastSavedAt)
-  const restoreVersion  = useDatasetStore((s) => s.restoreVersion)
-  const pendingEdits    = useDatasetStore((s) => s.pendingEdits)
-  const hasPending      = pendingEdits.some((e) => e.datasetId === datasetId)
+  const versionsLoading   = useDatasetStore((s) => s.versionsLoading[datasetId] ?? false)
+  const saving            = useDatasetStore((s) => s.saving)
+  const lastSavedAt       = useDatasetStore((s) => s.lastSavedAt)
+  const restoreVersion    = useDatasetStore((s) => s.restoreVersion)
+  const pendingEdits      = useDatasetStore((s) => s.pendingEdits)
+  const hasPending        = pendingEdits.some((e) => e.datasetId === datasetId)
 
   const handleRestore = async (v: VersionEntry) => {
     if (v.is_current) return
@@ -43,31 +43,44 @@ export default function VersionPanel({ projectId, datasetId }: VersionPanelProps
     }}>
       {/* Header */}
       <div style={{
-        padding: '10px 14px',
+        padding: '0 10px 0 14px',
+        height: 38, minHeight: 38,
         borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', gap: 7,
+        display: 'flex', alignItems: 'center', gap: 6,
       }}>
         <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--text3)', flex: 1 }}>
           version history
         </span>
+
         {/* Saving indicator */}
         {saving ? (
-          <span style={{
-            fontFamily: 'var(--mono)', fontSize: 9,
-            color: 'var(--amber)', display: 'flex', alignItems: 'center', gap: 4,
-          }}>
+          <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--amber)', display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span>
             saving…
           </span>
         ) : hasPending ? (
-          <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--amber)' }}>
-            unsaved…
-          </span>
+          <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--amber)' }}>unsaved…</span>
         ) : lastSavedAt ? (
           <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--text3)' }}>
             saved {formatRelative(lastSavedAt)}
           </span>
         ) : null}
+
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          title="Close"
+          style={{
+            width: 22, height: 22, borderRadius: 4,
+            border: '1px solid var(--border2)', background: 'none',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'var(--text3)', fontSize: 13, flexShrink: 0, transition: 'all .15s',
+          }}
+          onMouseOver={(e) => { e.currentTarget.style.background = 'var(--bg3)' }}
+          onMouseOut={(e) => { e.currentTarget.style.background = 'none' }}
+        >
+          ›
+        </button>
       </div>
 
       {/* Version list */}
@@ -134,7 +147,6 @@ function VersionRow({
       onMouseOver={(e) => { if (!v.is_current) (e.currentTarget as HTMLElement).style.background = 'var(--bg2)' }}
       onMouseOut={(e) => { if (!v.is_current) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
     >
-      {/* Top row: index + timestamp + badge */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: v.is_current ? 'var(--green)' : 'var(--text3)' }}>
           v{index}
@@ -153,8 +165,6 @@ function VersionRow({
           </span>
         )}
       </div>
-
-      {/* Description */}
       <div style={{
         fontFamily: 'var(--mono)', fontSize: 10,
         color: v.is_current ? 'var(--text2)' : 'var(--text3)',
@@ -177,7 +187,6 @@ function formatTs(ts: number): string {
     d.getFullYear() === now.getFullYear() &&
     d.getMonth() === now.getMonth() &&
     d.getDate() === now.getDate()
-
   if (isSameDay) {
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   }

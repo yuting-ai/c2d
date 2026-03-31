@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { useSchemaStore, type BlockingIssue, type DatasetState } from '../../stores/schemaStore'
 import { useProjectStore } from '../../stores/projectStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -32,13 +32,23 @@ function TypePill({ colType }: { colType: string }) {
 }
 
 export default function SchemaPanel() {
-  const { datasets, systemMode, strategyVersion, uploading, confirming, error, analysisMode } = useSchemaStore()
-  const setAnalysisMode = useSchemaStore((s) => s.setAnalysisMode)
+  const { datasets, systemMode, strategyVersion, uploading, confirming, error } = useSchemaStore()
   const allResolved = useSchemaStore((s) => s.allResolved)
   const { uploadDataset, confirmSchema } = useSchemaStore()
   const activeProjectId = useProjectStore((s) => s.activeProjectId)
   const schemaPanelOpen = useUIStore((s) => s.schemaPanelOpen)
   const toggleSchemaPanel = useUIStore((s) => s.toggleSchemaPanel)
+
+  // Active dataset tab within SchemaPanel (independent from DatasetTab's active dataset)
+  const [activeSchemaId, setActiveSchemaId] = useState<string>('')
+  useEffect(() => {
+    if (!activeSchemaId || !datasets.some((d) => d.id === activeSchemaId)) {
+      setActiveSchemaId(datasets[0]?.id ?? '')
+    }
+  }, [datasets, activeSchemaId])
+
+  // Hide entirely once datasets are confirmed — preprocessing moves to DatasetTab
+  if (systemMode === 'chat') return null
 
   // In chat mode, default to collapsed but allow user to toggle open
   const isCollapsed = !schemaPanelOpen
@@ -57,58 +67,37 @@ export default function SchemaPanel() {
         <span className="sp-title">data</span>
 
         {hasDatasets && (
-          <div style={{ display: 'flex', gap: 6, flex: 1 }}>
-            {datasets.map((ds) => (
-              <span key={ds.id} style={{
-                fontFamily: 'var(--mono)', fontSize: '10.5px',
-                display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text3)',
-              }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--green)' }} />
-                {ds.name}
-              </span>
-            ))}
+          <div style={{ display: 'flex', gap: 6, flex: 1 }} onClick={(e) => e.stopPropagation()}>
+            {datasets.map((ds) => {
+              const hasPending = ds.blockingIssues.some((i) => !i.resolved) ||
+                ds.warningIssues.some((w) => w.must_solve && !w.selectedOption)
+              const isCurrent = ds.id === activeSchemaId
+              return (
+                <span
+                  key={ds.id}
+                  onClick={() => { setActiveSchemaId(ds.id); if (!schemaPanelOpen) toggleSchemaPanel() }}
+                  style={{
+                    fontFamily: 'var(--mono)', fontSize: '10.5px',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    color: isCurrent && schemaPanelOpen ? 'var(--text2)' : 'var(--text3)',
+                    cursor: 'pointer', padding: '2px 4px', borderRadius: 4,
+                    transition: 'color .15s',
+                  }}
+                >
+                  <span style={{
+                    width: 5, height: 5, borderRadius: '50%',
+                    background: hasPending ? 'var(--amber)' : 'var(--green)',
+                  }} />
+                  {ds.name}
+                </span>
+              )
+            })}
           </div>
         )}
 
-        <div
-          style={{ display: 'inline-flex', border: '1px solid var(--border2)', borderRadius: 7, overflow: 'hidden' }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            onClick={() => setAnalysisMode('simple')}
-            style={{
-              fontFamily: 'var(--mono)',
-              fontSize: 10,
-              border: 'none',
-              padding: '4px 8px',
-              cursor: 'pointer',
-              color: analysisMode === 'simple' ? 'var(--green)' : 'var(--text3)',
-              background: analysisMode === 'simple' ? 'var(--green-dim)' : 'var(--bg3)',
-            }}
-          >
-            simple
-          </button>
-          <button
-            type="button"
-            onClick={() => setAnalysisMode('advanced')}
-            style={{
-              fontFamily: 'var(--mono)',
-              fontSize: 10,
-              border: 'none',
-              padding: '4px 8px',
-              cursor: 'pointer',
-              color: analysisMode === 'advanced' ? 'var(--green)' : 'var(--text3)',
-              background: analysisMode === 'advanced' ? 'var(--green-dim)' : 'var(--bg3)',
-            }}
-          >
-            advanced
-          </button>
-        </div>
-
           <span className={`sp-status ${unresolvedMustSolveCount > 0 ? 'blocking' : 'ok'}`}>
           {!hasDatasets ? '' :
-            unresolvedMustSolveCount > 0 ? `⛔ ${unresolvedMustSolveCount} must resolve` :
+            unresolvedMustSolveCount > 0 ? `⚠ ${unresolvedMustSolveCount} unresolved` :
            strategyVersion > 0 ? `✓ v${strategyVersion}` :
            '✓ ready to confirm'}
         </span>
@@ -120,30 +109,59 @@ export default function SchemaPanel() {
           <div className="sp-body">
             {!hasDatasets ? (
               <UploadZone uploading={uploading} />
-            ) : (
-              analysisMode === 'simple' ? (
+            ) : (() => {
+              const activeDs = datasets.find((d) => d.id === activeSchemaId) ?? datasets[0]
+              return (
                 <div className="sp-content-scroll">
-                  <div className="ds-overview">
-                    <span className="ds-overview-name">Simple mode enabled</span>
-                    <span className="ds-overview-info">
-                      Auto strategy is applied on upload (date → ISO, outlier → keep, missing → keep null/unknown).
-                    </span>
-                    <span className="ds-overview-info">
-                      You can switch to advanced mode to manually review full cleaning options before analysis.
-                    </span>
-                  </div>
-                  {datasets.map((ds) => (
-                    <DatasetContent key={ds.id} dataset={ds} />
-                  ))}
-                </div>
-              ) : (
-                <div className="sp-content-scroll">
-                  {datasets.map((ds) => (
-                    <DatasetContent key={ds.id} dataset={ds} />
-                  ))}
+                  {/* Dataset tab switcher — only shown when multiple datasets */}
+                  {datasets.length > 1 && (
+                    <div style={{
+                      display: 'flex', gap: 5, padding: '10px 14px 0',
+                      borderBottom: '1px solid var(--border)', paddingBottom: 10,
+                      flexWrap: 'wrap',
+                    }}>
+                      {datasets.map((ds) => {
+                        const isActive = ds.id === activeDs?.id
+                        const hasPending = ds.blockingIssues.some((i) => !i.resolved) ||
+                          ds.warningIssues.some((w) => w.must_solve && !w.selectedOption)
+                        return (
+                          <button
+                            key={ds.id}
+                            onClick={() => setActiveSchemaId(ds.id)}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 5,
+                              padding: '4px 10px 4px 8px', borderRadius: 6,
+                              border: `1px solid ${isActive ? 'var(--green-border)' : 'var(--border2)'}`,
+                              background: isActive ? 'var(--green-dim)' : 'var(--bg3)',
+                              fontFamily: 'var(--mono)', fontSize: 10.5,
+                              color: isActive ? 'var(--green)' : 'var(--text3)',
+                              cursor: 'pointer', transition: 'all .15s', whiteSpace: 'nowrap',
+                            }}
+                          >
+                            <span style={{
+                              width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                              background: hasPending ? 'var(--amber)' : isActive ? 'var(--green)' : 'var(--border2)',
+                              transition: 'background .15s',
+                            }} />
+                            {ds.name}
+                            {hasPending && (
+                              <span style={{
+                                fontSize: 9, padding: '1px 4px', borderRadius: 3,
+                                background: 'var(--amber-dim)', color: 'var(--amber)',
+                                border: '1px solid var(--amber-border)', lineHeight: 1.4,
+                              }}>!</span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* Only render the active dataset's content */}
+                  {activeDs && <DatasetContent key={activeDs.id} dataset={activeDs} />}
                 </div>
               )
-            )}
+            })()}
           </div>
 
           {hasDatasets && (
@@ -151,7 +169,7 @@ export default function SchemaPanel() {
               <div className="sp-action-top">
                 <div className="sp-action-text">
                   {unresolvedMustSolveCount > 0
-                    ? `⛔ ${unresolvedMustSolveCount} unresolved must-solve issue(s)`
+                    ? `⛔ ${unresolvedMustSolveCount} unresolved warning(s)`
                     : strategyVersion > 0
                       ? `✓ cleaning confirmed · v${strategyVersion} (you can update anytime)`
                       : '✓ ready to confirm cleaning decisions'}
@@ -177,6 +195,66 @@ export default function SchemaPanel() {
           )}
         </>
       )}
+    </div>
+  )
+}
+
+
+// ── Per-dataset Preprocessing Panel (embedded in DatasetTab) ──
+
+export function DatasetPreprocessingPanel({
+  datasetId,
+  projectId,
+}: {
+  datasetId: string
+  projectId: string
+}) {
+  const ds            = useSchemaStore((s) => s.datasets.find((d) => d.id === datasetId))
+  const strategyVersion = useSchemaStore((s) => s.strategyVersion)
+  const allResolved   = useSchemaStore((s) => s.allResolved)
+  const confirming    = useSchemaStore((s) => s.confirming)
+  const confirmSchema = useSchemaStore((s) => s.confirmSchema)
+  const error         = useSchemaStore((s) => s.error)
+
+  if (!ds) return null
+
+  const unresolvedCount =
+    ds.blockingIssues.filter((i) => !i.resolved).length +
+    ds.warningIssues.filter((w) => w.must_solve && !w.selectedOption).length
+
+  // Single div wrapper so parent's flex layout (bounded maxHeight) correctly distributes
+  // space: sp-body gets flex:1 → scrollable content area, sp-footer sticks to bottom
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <div className="sp-body" style={{ borderTop: 'none' }}>
+        <div className="sp-content-scroll">
+          <DatasetContent dataset={ds} />
+        </div>
+      </div>
+      <div className="sp-footer">
+        <div className="sp-action-top">
+          <div className="sp-action-text">
+            {unresolvedCount > 0
+              ? `⛔ ${unresolvedCount} unresolved warning(s)`
+              : strategyVersion > 0
+                ? `✓ preprocessing confirmed · v${strategyVersion} (you can update anytime)`
+                : '✓ ready to confirm preprocessing decisions'}
+          </div>
+          {error && <div className="sp-error">{error}</div>}
+          <button
+            className="sp-confirm-btn"
+            disabled={!allResolved() || confirming || !projectId}
+            onClick={async () => {
+              if (!projectId) return
+              await confirmSchema(projectId)
+            }}
+          >
+            {confirming ? 'applying…' :
+             strategyVersion > 0 ? '↻ update decisions' :
+             'confirm decisions & start analysis'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -335,7 +413,6 @@ function UploadZone({ uploading }: { uploading: boolean }) {
 // ── Dataset Content ──
 
 function DatasetContent({ dataset: ds }: { dataset: DatasetState }) {
-  const analysisMode = useSchemaStore((s) => s.analysisMode)
   const selectOption = useSchemaStore((s) => s.selectOption)
   const selectWarningOption = useSchemaStore((s) => s.selectWarningOption)
   const hasBlocking = ds.blockingIssues.length > 0
@@ -362,15 +439,14 @@ function DatasetContent({ dataset: ds }: { dataset: DatasetState }) {
       {/* Blocking issues */}
       {hasBlocking && (
         <>
-          <div className={`sp-section-label ${allBlockingResolved ? 'resolved-label' : ''}`}>
-            {allBlockingResolved ? '✓ resolved — ambiguous data' : '⛔ must resolve — ambiguous data'}
+          <div className="sp-section-label">
+            ⚠ ambiguous data — choose format
           </div>
           {ds.blockingIssues.map((issue) => (
             <BlockingRow
               key={issue.key}
               issue={issue}
               onSelect={(option) => selectOption(ds.id, issue.column, option)}
-              onUnresolve={() => selectOption(ds.id, issue.column, '')}
             />
           ))}
         </>
@@ -391,7 +467,6 @@ function DatasetContent({ dataset: ds }: { dataset: DatasetState }) {
                 <WarningIssueRow
                   key={w.key}
                   issue={w}
-                  advancedMode={analysisMode === 'advanced'}
                   onSelect={(option) => selectWarningOption(ds.id, w.key, option)}
                 />
               ))}
@@ -420,34 +495,16 @@ function DatasetContent({ dataset: ds }: { dataset: DatasetState }) {
 
 function WarningIssueRow({
   issue,
-  advancedMode,
   onSelect,
 }: {
   issue: DatasetState['warningIssues'][number]
-  advancedMode: boolean
   onSelect: (option: string) => void
 }) {
-  const [expandedAfterResolve, setExpandedAfterResolve] = useState(false)
-  const resolved = Boolean(issue.selectedOption)
-  const collapsed = advancedMode && resolved && !expandedAfterResolve
-
   return (
-    <div
-      className={`warning-issue ${collapsed ? 'resolved' : ''}`}
-      onClick={collapsed ? () => setExpandedAfterResolve(true) : undefined}
-    >
-      <div className="resolved-summary">
-        <span>✓</span>
-        <span className="rs-col">{issue.column}</span>
-        <span className="rs-choice">
-          {issue.options?.find((o) => o.value === issue.selectedOption)?.label || issue.selectedOption}
-        </span>
-        <span className="rs-edit">click to edit</span>
-      </div>
-
+    <div className="warning-issue">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <TypePill colType={issue.col_type} />
-        {issue.must_solve && <span className="sp-status blocking" style={{ fontSize: 10 }}>must solve</span>}
+        {issue.must_solve && <span className="sp-status blocking" style={{ fontSize: 10 }}>warning</span>}
         <span className="warning-note" style={{ marginLeft: 0 }}>{issue.description}</span>
       </div>
 
@@ -457,13 +514,7 @@ function WarningIssueRow({
             <div
               key={`${issue.key}:${opt.value}`}
               className={`option-btn ${issue.selectedOption === opt.value ? 'selected' : ''}`}
-              onClick={(e) => {
-                e.stopPropagation()
-                onSelect(opt.value)
-                if (advancedMode) {
-                  setExpandedAfterResolve(false)
-                }
-              }}
+              onClick={(e) => { e.stopPropagation(); onSelect(opt.value) }}
             >
               <span className="radio-dot" />
               {opt.label}
@@ -481,28 +532,12 @@ function WarningIssueRow({
 function BlockingRow({
   issue,
   onSelect,
-  onUnresolve,
 }: {
   issue: BlockingIssue
   onSelect: (option: string) => void
-  onUnresolve: () => void
 }) {
   return (
-    <div
-      className={`blocking-row ${issue.resolved ? 'resolved' : ''}`}
-      onClick={issue.resolved ? onUnresolve : undefined}
-    >
-      {/* Resolved summary */}
-      <div className="resolved-summary">
-        <span>✓</span>
-        <span className="rs-col">{issue.column}</span>
-        <span className="rs-choice">
-          {issue.options.find(o => o.value === issue.selectedOption)?.label || issue.selectedOption}
-        </span>
-        <span className="rs-edit">click to edit</span>
-      </div>
-
-      {/* Full content (hidden when resolved) */}
+    <div className="blocking-row">
       <div className="br-head">
         <span className="br-col-name">{issue.column}</span>
         <TypePill colType={issue.inferred_type || issue.original_type} />

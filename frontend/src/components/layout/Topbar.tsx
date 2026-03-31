@@ -6,6 +6,7 @@ import { useProjectStore } from '../../stores/projectStore'
 export default function Topbar() {
   const datasets = useSchemaStore((s) => s.datasets)
   const uploadDataset = useSchemaStore((s) => s.uploadDataset)
+  const toggleDataset = useSchemaStore((s) => s.toggleDataset)
   const activeProjectId = useProjectStore((s) => s.activeProjectId)
   const addDatasetToProject = useProjectStore((s) => s.addDatasetToProject)
   const setSchemaPanelOpen = useUIStore((s) => s.setSchemaPanelOpen)
@@ -31,7 +32,13 @@ export default function Topbar() {
           </span>
         )}
         {datasets.map((ds) => (
-          <DatasetChip key={ds.id} name={ds.name} rows={ds.rowCount.toLocaleString()} active />
+          <DatasetChip
+            key={ds.id}
+            name={ds.name}
+            rows={ds.rowCount.toLocaleString()}
+            active={ds.enabled}
+            onClick={() => toggleDataset(ds.id)}
+          />
         ))}
 
         {/* + add button — only show when there's an active project */}
@@ -83,17 +90,23 @@ export default function Topbar() {
   )
 }
 
-function DatasetChip({ name, rows, active }: { name: string; rows: string; active: boolean }) {
+function DatasetChip({ name, rows, active, onClick }: { name: string; rows: string; active: boolean; onClick?: () => void }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 7,
-      padding: '4px 10px 4px 8px',
-      borderRadius: 6,
-      border: `1px solid ${active ? 'var(--green)' : 'var(--border2)'}`,
-      background: active ? 'var(--green-dim)' : 'var(--bg3)',
-      fontFamily: 'var(--mono)', fontSize: '11px',
-      flexShrink: 0,
-    }}>
+    <div
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 7,
+        padding: '4px 10px 4px 8px',
+        borderRadius: 6,
+        border: `1px solid ${active ? 'var(--green)' : 'var(--border2)'}`,
+        background: active ? 'var(--green-dim)' : 'var(--bg3)',
+        fontFamily: 'var(--mono)', fontSize: '11px',
+        flexShrink: 0,
+        cursor: 'pointer',
+        transition: 'all 0.15s',
+        opacity: active ? 1 : 0.55,
+      }}
+    >
       <div style={{
         width: 24, height: 13, borderRadius: 7,
         background: active ? 'var(--green)' : 'var(--border2)',

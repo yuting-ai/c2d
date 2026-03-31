@@ -612,6 +612,7 @@ async def analyze_stream(
     project_id: str = Query(...),
     query: str = Query(...),
     null_handling_config: str = Query(default="", description="JSON-encoded {column: method} map"),
+    excluded_tables: str = Query(default="", description="Comma-separated table names to exclude from analysis"),
 ):
     """Run analysis pipeline and stream results via SSE."""
     if project_id not in _project_state:
@@ -642,8 +643,13 @@ async def analyze_stream(
     active_tables = []
     quality_notes = []
 
+    # Parse excluded table names from frontend (user-toggled datasets)
+    excluded_table_set = {t.strip().lower() for t in excluded_tables.split(",") if t.strip()}
+
     for ds_id, ds in project["datasets"].items():
         table_name = ds.get("table_name", ds["name"].rsplit(".", 1)[0])
+        if table_name.lower() in excluded_table_set:
+            continue  # Dataset toggled off by user — skip from analysis context
         excluded_set = {inf.column for inf in ds["inferences"] if ds["decisions"].get(inf.column) == "exclude"}
 
         # Build columns as list of dicts: {name, type} so the SQL Agent knows data types
