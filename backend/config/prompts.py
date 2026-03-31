@@ -101,6 +101,11 @@ sql_task must be a precise, machine-actionable specification:
      Wrap in a subquery or use QUALIFY rn <= N.
 5. For P-D: say "use width_bucket() to bin [column]; output bin_range and frequency".
 6. For P-G: say "return raw pairs of [col_x, col_y]; no aggregation".
+   CRITICAL FOR P-G: sql_task must ONLY ask for raw column pairs.
+   NEVER ask SQL to compute Pearson r, p-value, t-statistic, CDF(), CORR(),
+   covariance, or any correlation coefficient. Those are computed by stats_agent.
+   Correct sql_task: "P-G: Return raw pairs of critic_score, total_sales where both are not null."
+   Wrong sql_task:   "Compute Pearson corr and p_value. Output columns: pearson_corr, p_value."
 7. Describe WHAT data is needed, not HOW to implement it in SQL syntax.
    Let the SQL Agent choose the exact syntax — only specify the logical requirement.
 8. Never leave output format ambiguous - the SQL Agent uses this spec directly.
@@ -192,6 +197,14 @@ HARD CONSTRAINTS (behavioral rules not covered by the RAG):
 2. NEVER use these functions (common mistakes from other dialects):
    strftime()   ISNULL()   GETDATE()   IFNULL()   TOP N
    Look up the DuckDB equivalent in {duckdb_refs}.
+
+2b. For P-G (correlation/scatter) intent: NEVER compute statistics in SQL.
+    Forbidden: CDF()  CORR()  PEARSON()  t-statistic  p-value  covariance
+               SUM((col - AVG(col)) * ...)  nested aggregates for correlation
+    These ALL cause Binder Errors in DuckDB. stats_agent handles them in Python.
+    The ONLY correct P-G SQL is:
+      SELECT col_x, col_y FROM tbl
+      WHERE col_x IS NOT NULL AND col_y IS NOT NULL LIMIT 5000;
 
 3. Avoid SELECT *; select only needed columns.
 
@@ -343,6 +356,9 @@ GROUP BY dimension_col
 ORDER BY avg_metric DESC;
 
 -- P-G: Scatter / correlation (raw pairs, no aggregation)
+-- [!] HARD RULE: return ONLY raw column pairs. NEVER compute Pearson r, p-value,
+--     t-statistic, CDF(), CORR(), covariance, or correlation coefficients in SQL.
+--     All statistical computation is handled by stats_agent after SQL returns.
 SELECT col_x, col_y
 FROM tbl
 WHERE col_x IS NOT NULL AND col_y IS NOT NULL
