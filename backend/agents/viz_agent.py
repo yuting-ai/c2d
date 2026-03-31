@@ -5,6 +5,7 @@ import logging
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from backend.agents.base import get_llm, no_think
 from backend.agents.json_utils import extract_json
+from backend.config.prompts import VIZ_SYSTEM
 from backend.graph.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -324,46 +325,6 @@ def _compatible_chart_types(series: list[dict], primary_type: str) -> list[str]:
     compatible.discard("table")
 
     return [t for t in compatible if t != primary_type]
-
-
-VIZ_SYSTEM = """You are a data visualization specialist. Based on the SQL query results,
-choose the best chart type and output structured data for rendering.
-
-Available chart types: line, area, bar, pie, scatter
-
-Data from SQL query:
-Columns: {columns}
-Data (first 30 rows):
-{data_preview}
-Total rows: {row_count}
-
-User original question: {user_query}
-
-Chart title and axis labels must match language code: {user_lang} (do not switch language; raw data column names may stay English).
-
-Rules:
-- Choose the chart type that best communicates the data story
-- Output alt_types: 2-3 alternative types that also make sense (table is always added by frontend)
-- For time series -> prefer line, alt: [area, bar]
-- For categories (at most 7 distinct values) -> prefer bar, alt: [pie]
-- For categories (more than 7) -> prefer bar, alt: []
-- For two continuous variables -> prefer scatter
-- For composition/proportion -> prefer pie, alt: [bar]
-- x values should be the dimension (categories, dates), y values should be measures (numbers)
-- If multiple series, output one series per group
-- Keep series names short and clear
-
-Respond with JSON only (no markdown fences):
-{{
-  "type": "line",
-  "alt_types": ["area", "bar"],
-  "title": "Monthly Revenue by Region",
-  "x_label": "Month",
-  "y_label": "Revenue",
-  "series": [
-    {{"name": "East", "x": ["Jan", "Feb"], "y": [124800, 138200]}}
-  ]
-}}"""
 
 
 async def viz_agent(state: AgentState) -> dict:

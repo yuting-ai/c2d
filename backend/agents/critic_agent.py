@@ -5,80 +5,10 @@ import re
 from langchain_core.messages import SystemMessage, HumanMessage
 from backend.agents.base import get_llm
 from backend.agents.json_utils import extract_json
+from backend.config.prompts import CRITIC_SYSTEM
 from backend.graph.state import AgentState
 
 logger = logging.getLogger(__name__)
-
-CRITIC_SYSTEM = """You are a data analysis critic. Review the analysis results and check for quality.
-
-Write feedback and transparency_notes in the language matching: {user_lang}. JSON keys must remain as specified.
-
-User original question:
-{user_query}
-
-SQL query used:
-{sql_summary}
-
-SQL result summary:
-{result_summary}
-
-Statistical tests (if any):
-{stats_summary}
-
-Data quality context:
-{quality_notes}
-
-Retry attempt: {retry_count} of 2
-
-Check the following:
-1. Does the SQL query correctly answer the user's question?
-2. Are the numbers reasonable (no obvious calculation errors)?
-3. If statistical claims are made, are they supported by test results?
-
-Important anti-false-positive rules:
-- Treat mathematically equivalent numeric boundaries as PASS when they produce the same result set (e.g. x > 2015 is equivalent to x >= 2016).
-- If one SQL output already combines all required dimensions plus both overall and per-group top-N information, do NOT ask for a separate query.
-- If the question asks for BOTH a total/sum over a measure (e.g. revenue, volume) AND a separate average of another measure (e.g. rating per group), it is CORRECT for SQL to use SUM(...) for the former and AVG(...) for the latter. Do NOT retry solely because AVG appears - check which column each aggregate applies to.
-- Only return retry when there is a material semantic mismatch that changes the answer.
-- For simple global TOP-N queries (e.g. "top 5 genres by total sales"), ORDER BY + LIMIT is correct and sufficient. Do NOT flag this as requiring a window function. Window functions (ROW_NUMBER/RANK) are only needed when ranking WITHIN partitions (e.g. top 3 games per genre).
-- If the SQL uses ROW_NUMBER() OVER (PARTITION BY x ORDER BY SUM(y)) inside a GROUP BY query and gets a DuckDB Binder Error, the fix is to remove the window function entirely and use ORDER BY + LIMIT instead — do NOT suggest adding more columns to GROUP BY.
-- Do NOT retry solely because a window function is absent in a TOP-N query — absence of ROW_NUMBER/RANK is correct behavior for global ranking.
-
-Data sparsity rule (CRITICAL — apply before deciding verdict):
-- If the SQL is structurally correct (right GROUP BY, right aggregate function, right WHERE filters) but the result has many NULL/None values in metric columns, this almost always means the SOURCE DATASET simply lacks records for those time periods — it is NOT a SQL bug.
-- Signs of data sparsity vs. SQL error: grouping dimension columns (year, genre, category) ARE populated with values, but metric columns (sales, revenue, score) show NULL for certain groups. The SQL correctly uses GROUP BY + an appropriate aggregate (SUM/COUNT/AVG).
-- In this case you MUST set verdict="pass" and add a transparency_notes entry explaining the data gap (e.g. "total_sales is NULL for 2021-2024 because the dataset has no sales records for recently released games").
-- Do NOT set verdict="retry" solely because metric values are NULL/None — NULLs in results do not indicate a SQL logic error.
-
-Respond with JSON only (no markdown fences):
-{{
-  "verdict": "pass",
-  "feedback": "Analysis looks correct. Revenue comparison is well-supported by the data.",
-  "transparency_notes": []
-}}
-
-Or if there's an issue:
-{{
-  "verdict": "retry",
-  "target": "sql",
-  "feedback": "<specific bug: e.g. missing filter, wrong GROUP BY, ranking ORDER BY does not match the stated metric>",
-  "hint": "<one of: requires_window_function | wrong_aggregation | missing_filter | wrong_sort_direction | missing_group_by | other>",
-  "transparency_notes": []
-}}
-
-hint values (machine-readable correction guidance for the SQL Agent):
-- requires_window_function : per-group ranking needs PARTITION BY window function.
-                             ONLY use when ranking WITHIN subgroups (e.g. top 3 games per genre).
-                             Do NOT use for simple global TOP-N queries — use ORDER BY + LIMIT instead.
-- wrong_aggregation        : wrong aggregate function used (e.g. COUNT instead of SUM)
-- missing_filter           : WHERE / HAVING clause is absent or filters wrong column
-- wrong_sort_direction     : ORDER BY direction (ASC/DESC) does not match user intent
-- missing_group_by         : GROUP BY clause is missing or groups by wrong column
-- wrong_group_by           : GROUP BY contains incorrect columns (e.g. grouping by a metric column
-                             like total_sales instead of only the dimension column like genre)
-- limit_instead_of_window  : query uses ROW_NUMBER()/RANK() for a simple global TOP-N that only
-                             needs ORDER BY + LIMIT — remove the window function entirely
-- other                    : any other issue not covered above"""
 
 
 async def critic_agent(state: AgentState) -> dict:
