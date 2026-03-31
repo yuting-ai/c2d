@@ -25,36 +25,72 @@ _PG_CORRELATION_KEYWORDS = {
 }
 
 
+def _detect_outliers(arr: np.ndarray) -> tuple[np.ndarray, str]:
+    """Adaptive outlier detection based on distribution skewness.
+
+    - |skewness| > 1  → right/left-skewed (e.g. sales, revenue):
+        log-transform then IQR, avoids flagging the natural long tail
+    - |skewness| <= 1 → approximately normal:
+        Z-score with threshold 3σ
+
+    Returns (outlier_indices, method_name).
+    """
+    skewness = float(sp_stats.skew(arr))
+
+    if abs(skewness) > 1:
+        # Log-transform to compress the tail before IQR
+        arr_log = np.log1p(arr - arr.min() + 1)
+        q1, q3 = np.percentile(arr_log, [25, 75])
+        iqr = q3 - q1
+        lower = q1 - 1.5 * iqr
+        upper = q3 + 1.5 * iqr
+        idx = np.where((arr_log < lower) | (arr_log > upper))[0]
+        return idx, "log+IQR"
+    else:
+        z_scores = np.abs(sp_stats.zscore(arr))
+        idx = np.where(z_scores > 3)[0]
+        return idx, "Z-score"
+
+
 def run_pearson_test(x: list, y: list) -> dict:
-    """Compute Pearson r, p-value, and IQR-based outliers for two numeric series.
+    """Compute Pearson r, p-value, and adaptive outlier detection.
 
-    Args:
-        x: first numeric series (already cleaned of NaN/None at call site)
-        y: second numeric series of equal length
+    Outlier method is chosen per-column based on skewness:
+      |skew| > 1  → log+IQR  (right/left-skewed distributions)
+      |skew| <= 1 → Z-score  (approximately normal)
 
-    Returns:
-        dict with keys: pearson_r, p_value, significant, sample_size,
-                        outlier_count, outlier_indices
+    Returns dict with: pearson_r, p_value, significant, sample_size,
+                       skewness_x, skewness_y, outlier_method,
+                       outlier_count, outlier_indices
     """
     x_arr = np.array(x, dtype=float)
     y_arr = np.array(y, dtype=float)
 
     r, p_value = sp_stats.pearsonr(x_arr, y_arr)
 
-    def _iqr_outliers(arr: np.ndarray) -> np.ndarray:
-        q1, q3 = np.percentile(arr, [25, 75])
-        iqr = q3 - q1
-        lower = q1 - 1.5 * iqr
-        upper = q3 + 1.5 * iqr
-        return np.where((arr < lower) | (arr > upper))[0]
+    skew_x = float(sp_stats.skew(x_arr))
+    skew_y = float(sp_stats.skew(y_arr))
 
-    outlier_idx = np.union1d(_iqr_outliers(x_arr), _iqr_outliers(y_arr))
+    idx_x, method_x = _detect_outliers(x_arr)
+    idx_y, method_y = _detect_outliers(y_arr)
+    outlier_idx = np.union1d(idx_x, idx_y)
+
+    # Report the method used for the more skewed column (y is typically the metric)
+    outlier_method = method_y if abs(skew_y) >= abs(skew_x) else method_x
+
+    logger.info(
+        "run_pearson_test: skew_x=%.3f(%s) skew_y=%.3f(%s) outliers=%d/%d",
+        skew_x, method_x, skew_y, method_y, len(outlier_idx), len(x_arr),
+    )
 
     return {
         "pearson_r":       round(float(r), 4),
         "p_value":         round(float(p_value), 6),
         "significant":     bool(p_value < 0.05),
         "sample_size":     int(len(x_arr)),
+        "skewness_x":      round(skew_x, 4),
+        "skewness_y":      round(skew_y, 4),
+        "outlier_method":  outlier_method,
         "outlier_count":   int(len(outlier_idx)),
         "outlier_indices": outlier_idx.tolist(),
     }

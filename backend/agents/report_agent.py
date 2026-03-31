@@ -20,22 +20,39 @@ def _format_pearson_block(pearson: dict, user_lang: str) -> str:
     This is injected *after* the LLM conclusion so the statistical numbers are
     always precise and machine-verified, not paraphrased by the LLM.
     """
-    r             = pearson.get("pearson_r", "—")
-    p_value       = pearson.get("p_value", "—")
-    significant   = pearson.get("significant", False)
-    sample_size   = pearson.get("sample_size", "—")
-    outlier_count = pearson.get("outlier_count", 0)
-    col_x         = pearson.get("col_x", "x")
-    col_y         = pearson.get("col_y", "y")
+    r               = pearson.get("pearson_r", "—")
+    p_value         = pearson.get("p_value", "—")
+    significant     = pearson.get("significant", False)
+    sample_size     = pearson.get("sample_size", "—")
+    outlier_count   = pearson.get("outlier_count", 0)
+    outlier_method  = pearson.get("outlier_method", "IQR")
+    skewness_x      = pearson.get("skewness_x")
+    skewness_y      = pearson.get("skewness_y")
+    col_x           = pearson.get("col_x", "x")
+    col_y           = pearson.get("col_y", "y")
 
     abs_r = abs(float(r)) if isinstance(r, (int, float)) else 0.0
-
     is_zh = user_lang.startswith("zh")
 
+    # Skewness note for whichever column triggered the adaptive method
+    skew_note = ""
+    if skewness_y is not None and outlier_method == "log+IQR":
+        if is_zh:
+            skew_note = f"{col_y} 呈右偏分布（偏度 = {skewness_y}），已自动切换为对数变换 + IQR 方法识别异常值。"
+        else:
+            skew_note = f"{col_y} is right-skewed (skewness = {skewness_y}); automatically switched to log+IQR for outlier detection."
+    elif skewness_y is not None and outlier_method == "Z-score":
+        if is_zh:
+            skew_note = f"数据分布接近正态（{col_y} 偏度 = {skewness_y}），使用 Z-score 方法（阈值 = 3σ）识别异常值。"
+        else:
+            skew_note = f"Distribution is approximately normal ({col_y} skewness = {skewness_y}); using Z-score method (threshold = 3σ)."
+
     if is_zh:
-        strength = "强相关" if abs_r >= 0.7 else ("中等相关" if abs_r >= 0.3 else "弱相关")
+        strength  = "强相关" if abs_r >= 0.7 else ("中等相关" if abs_r >= 0.3 else "弱相关")
         direction = "正" if float(r) > 0 else "负"
-        sig_text = "两变量存在统计显著相关性（p < 0.05）" if significant else "两变量无统计显著相关性（p ≥ 0.05）"
+        sig_text  = "两变量存在统计显著相关性（p < 0.05）" if significant else "两变量无统计显著相关性（p ≥ 0.05）"
+        skew_x_str = f"{skewness_x}" if skewness_x is not None else "—"
+        skew_y_str = f"{skewness_y}" if skewness_y is not None else "—"
         lines = [
             f"**Pearson 相关性分析 — {col_x} × {col_y}**",
             "",
@@ -43,14 +60,21 @@ def _format_pearson_block(pearson: dict, user_lang: str) -> str:
             f"- p 值：**{p_value}**",
             f"- 显著性 (α = 0.05)：**{'显著' if significant else '不显著'}**",
             f"- 样本量：{sample_size}",
-            f"- 异常值数量 (IQR 法)：{outlier_count}",
+            f"- {col_x} 偏度：{skew_x_str}",
+            f"- {col_y} 偏度：{skew_y_str}",
+            f"- 异常值检测方法：{outlier_method}",
+            f"- 异常值数量：{outlier_count}",
             "",
             f"**结论**：{sig_text}，{direction}向{strength}（|r| = {abs_r:.4f}）。",
         ]
+        if skew_note:
+            lines.append(f"*{skew_note}*")
     else:
         strength  = "strong" if abs_r >= 0.7 else ("moderate" if abs_r >= 0.3 else "weak")
         direction = "positive" if float(r) > 0 else "negative"
         sig_text  = "statistically significant (p < 0.05)" if significant else "not statistically significant (p ≥ 0.05)"
+        skew_x_str = f"{skewness_x}" if skewness_x is not None else "—"
+        skew_y_str = f"{skewness_y}" if skewness_y is not None else "—"
         lines = [
             f"**Pearson Correlation — {col_x} × {col_y}**",
             "",
@@ -58,10 +82,15 @@ def _format_pearson_block(pearson: dict, user_lang: str) -> str:
             f"- p-value: **{p_value}**",
             f"- Significant (α = 0.05): **{'Yes' if significant else 'No'}**",
             f"- Sample size: {sample_size}",
-            f"- Outliers (IQR method): {outlier_count}",
+            f"- {col_x} skewness: {skew_x_str}",
+            f"- {col_y} skewness: {skew_y_str}",
+            f"- Outlier method: {outlier_method}",
+            f"- Outlier count: {outlier_count}",
             "",
             f"**Conclusion**: {sig_text} — {direction} {strength} correlation (|r| = {abs_r:.4f}).",
         ]
+        if skew_note:
+            lines.append(f"*{skew_note}*")
 
     return "\n".join(lines)
 
