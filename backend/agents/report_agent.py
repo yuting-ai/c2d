@@ -21,7 +21,11 @@ def _format_pearson_block(pearson: dict, user_lang: str) -> str:
     always precise and machine-verified, not paraphrased by the LLM.
     """
     r               = pearson.get("pearson_r", "—")
-    p_value         = pearson.get("p_value", "—")
+    _p_raw          = pearson.get("p_value", None)
+    p_value         = (
+        "< 0.000001" if isinstance(_p_raw, (int, float)) and _p_raw < 0.000001
+        else (f"{_p_raw:.6f}" if isinstance(_p_raw, (int, float)) else "—")
+    )
     significant     = pearson.get("significant", False)
     sample_size     = pearson.get("sample_size", "—")
     outlier_count   = pearson.get("outlier_count", 0)
