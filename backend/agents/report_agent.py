@@ -14,6 +14,58 @@ logger = logging.getLogger(__name__)
 DATA_FACTS_TOP_RANKS = 3
 
 
+def _format_pearson_block(pearson: dict, user_lang: str) -> str:
+    """Programmatically format a Pearson correlation result block for the report.
+
+    This is injected *after* the LLM conclusion so the statistical numbers are
+    always precise and machine-verified, not paraphrased by the LLM.
+    """
+    r             = pearson.get("pearson_r", "—")
+    p_value       = pearson.get("p_value", "—")
+    significant   = pearson.get("significant", False)
+    sample_size   = pearson.get("sample_size", "—")
+    outlier_count = pearson.get("outlier_count", 0)
+    col_x         = pearson.get("col_x", "x")
+    col_y         = pearson.get("col_y", "y")
+
+    abs_r = abs(float(r)) if isinstance(r, (int, float)) else 0.0
+
+    is_zh = user_lang.startswith("zh")
+
+    if is_zh:
+        strength = "强相关" if abs_r >= 0.7 else ("中等相关" if abs_r >= 0.3 else "弱相关")
+        direction = "正" if float(r) > 0 else "负"
+        sig_text = "两变量存在统计显著相关性（p < 0.05）" if significant else "两变量无统计显著相关性（p ≥ 0.05）"
+        lines = [
+            f"**Pearson 相关性分析 — {col_x} × {col_y}**",
+            "",
+            f"- Pearson 相关系数 (r)：**{r}**",
+            f"- p 值：**{p_value}**",
+            f"- 显著性 (α = 0.05)：**{'显著' if significant else '不显著'}**",
+            f"- 样本量：{sample_size}",
+            f"- 异常值数量 (IQR 法)：{outlier_count}",
+            "",
+            f"**结论**：{sig_text}，{direction}向{strength}（|r| = {abs_r:.4f}）。",
+        ]
+    else:
+        strength  = "strong" if abs_r >= 0.7 else ("moderate" if abs_r >= 0.3 else "weak")
+        direction = "positive" if float(r) > 0 else "negative"
+        sig_text  = "statistically significant (p < 0.05)" if significant else "not statistically significant (p ≥ 0.05)"
+        lines = [
+            f"**Pearson Correlation — {col_x} × {col_y}**",
+            "",
+            f"- Pearson r: **{r}**",
+            f"- p-value: **{p_value}**",
+            f"- Significant (α = 0.05): **{'Yes' if significant else 'No'}**",
+            f"- Sample size: {sample_size}",
+            f"- Outliers (IQR method): {outlier_count}",
+            "",
+            f"**Conclusion**: {sig_text} — {direction} {strength} correlation (|r| = {abs_r:.4f}).",
+        ]
+
+    return "\n".join(lines)
+
+
 def _float_cell(value) -> float | None:
     if value is None or isinstance(value, bool):
         return None
@@ -450,6 +502,15 @@ async def report_agent(state: AgentState) -> dict:
 
     conclusion = response.content.strip()
     logger.info(f"Report Agent conclusion: {conclusion[:100]}...")
+
+    # Inject Pearson block at the top when stats_agent produced one.
+    # Done programmatically so numbers are always exact, not LLM-paraphrased.
+    pearson = stats_result.get("pearson") if stats_result else None
+    if pearson:
+        user_lang = state.get("user_lang", "en")
+        pearson_block = _format_pearson_block(pearson, user_lang)
+        conclusion = pearson_block + "\n\n---\n\n" + conclusion
+        logger.info("Report Agent: prepended Pearson block (r=%s, p=%s)", pearson.get("pearson_r"), pearson.get("p_value"))
 
     # Build progress event with all completed steps
     plan = state.get("plan", [])

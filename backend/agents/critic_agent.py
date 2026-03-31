@@ -94,8 +94,11 @@ async def critic_agent(state: AgentState) -> dict:
     feedback = parsed.get("feedback", "")
     hint = str(parsed.get("hint", "other")).strip().lower()
     target = str(parsed.get("target", "sql")).strip().lower()
-    if target not in {"sql", "planner", "both"}:
+    if target not in {"sql", "planner", "both", "stats"}:
         target = "sql"
+
+    # Deterministic guard: P-G correlation queries → validate stats output, not SQL.
+    verdict, target, feedback = _override_pg_correlation(state, verdict, target, feedback)
 
     # Deterministic guard: force retry when histogram intent with insufficient bin data.
     verdict, target, feedback = _force_histogram_retry(state, verdict, target, feedback)
@@ -128,6 +131,47 @@ async def critic_agent(state: AgentState) -> dict:
         result["stats_result"] = None
 
     return result
+
+
+def _override_pg_correlation(
+    state: AgentState, verdict: str, target: str, feedback: str
+) -> tuple[str, str, str]:
+    """For P-G (scatter/correlation) queries: validate stats output, not SQL.
+
+    If Pearson result is present in stats_result → always pass.
+    If Pearson result is absent → retry stats_agent (never sql).
+    """
+    intent_pattern = (state.get("intent_pattern") or "").upper()
+    if intent_pattern != "P-G":
+        return verdict, target, feedback
+
+    stats_result = state.get("stats_result") or {}
+    pearson = stats_result.get("pearson")
+
+    _required = ("pearson_r", "p_value", "significant", "outlier_count")
+    if pearson and all(k in pearson for k in _required):
+        r   = pearson["pearson_r"]
+        p   = pearson["p_value"]
+        sig = "significant" if pearson["significant"] else "not significant"
+        logger.info(
+            "Critic: P-G override → pass (pearson r=%.4f, p=%.6f, %s)", r, p, sig
+        )
+        return (
+            "pass",
+            target,
+            f"Pearson correlation complete: r={r}, p={p} ({sig}). "
+            "SQL correctly returned raw pairs; stats_agent computed the test.",
+        )
+
+    # Pearson data missing — stats_agent should have computed it
+    logger.warning("Critic: P-G query but pearson data missing — retrying stats_agent")
+    return (
+        "retry",
+        "stats",
+        "P-G correlation query requires Pearson statistical analysis. "
+        "stats_agent must return pearson_r, p_value, significant, and outlier_count. "
+        "Re-run stats_agent to compute the Pearson test.",
+    )
 
 
 _HISTOGRAM_KEYWORDS = (
