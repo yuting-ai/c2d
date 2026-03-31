@@ -240,12 +240,19 @@ export const useDatasetStore = create<DatasetStore>((set, get) => ({
       }
     })
 
-    // 2. Send to backend immediately
+    // 2. Send to backend immediately (include current sort state so backend edits the correct physical row)
     try {
+      const { sortCol, sortDir } = get()
       await fetch(`${API}/projects/${projectId}/datasets/${datasetId}/cells`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ row_index: rowIndex, column, value }),
+        body: JSON.stringify({
+          row_index: rowIndex,
+          column,
+          value,
+          sort_col: sortCol[datasetId] || null,
+          sort_dir: sortDir[datasetId] || 'asc',
+        }),
       })
     } catch {
       // Best-effort; snapshot will fail later if this did

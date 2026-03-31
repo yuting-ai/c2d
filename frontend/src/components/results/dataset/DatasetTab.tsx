@@ -2,7 +2,7 @@ import { useDatasetStore } from '../../../stores/datasetStore'
 import { useSchemaStore } from '../../../stores/schemaStore'
 import { useProjectStore } from '../../../stores/projectStore'
 import { useResultsStore } from '../../../stores/resultsStore'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DatasetState } from '../../../stores/schemaStore'
 import SchemaPanel, { DatasetPreprocessingPanel } from '../../schema/SchemaPanel'
 import DataGrid from './DataGrid'
@@ -96,6 +96,16 @@ export default function DatasetTab() {
       fetchVersions(projectId, dsId)
     }
   }, [projectId, dsId, preview, isLoad, hasVersions, isVersionsLoading, fetchPreview, fetchVersions])
+
+  // Re-fetch preview when preprocessing is confirmed (transforms may change actual data)
+  const prevStrategyVersionRef = useRef(strategyVersion)
+  useEffect(() => {
+    if (!projectId || !dsId) return
+    if (strategyVersion === 0) return                             // not confirmed yet
+    if (strategyVersion === prevStrategyVersionRef.current) return // no change
+    prevStrategyVersionRef.current = strategyVersion
+    fetchPreview(projectId, dsId, { reset: true })
+  }, [strategyVersion, projectId, dsId, fetchPreview])
 
   // ── Quick-chart handler ───────────────────────────────────────
   const handleQuickChart = () => {

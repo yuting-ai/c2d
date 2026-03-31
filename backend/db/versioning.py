@@ -107,14 +107,21 @@ def apply_cell_edit(
     table_name: str,
     project_id: str,
     dataset_id: str,
-    row_index: int,          # 0-based row index
+    row_index: int,          # 0-based display row index (may be in sorted order)
     column: str,
     new_value: Any,
+    sort_col: str | None = None,   # active sort column sent by the frontend
+    sort_dir: str = "asc",         # "asc" or "desc"
     old_value: Any = None,
 ) -> None:
     """
     Apply one cell edit to the live DuckDB table and record it in the
     pending-edits buffer (to be committed later via create_snapshot).
+
+    When the frontend grid is sorted, row_index is the display position in
+    the sorted view, not the physical row in the table.  We resolve the
+    correct physical row by sorting a copy of the DataFrame the same way
+    and mapping back to the original index.
     """
     # Read full table into pandas, apply edit, re-register
     df: pd.DataFrame = conn.execute(f'SELECT * FROM "{table_name}"').df()
@@ -123,6 +130,17 @@ def apply_cell_edit(
         raise IndexError(f"row_index {row_index} out of range (table has {len(df)} rows)")
     if column not in df.columns:
         raise KeyError(f"Column '{column}' not found in table '{table_name}'")
+
+    # Resolve physical row index when a sort is active
+    physical_idx: int = row_index
+    if sort_col and sort_col in df.columns:
+        ascending = sort_dir.lower() != "desc"
+        df_sorted = (
+            df
+            .sort_values(sort_col, ascending=ascending, na_position="last")
+            .reset_index()           # 'index' column now holds original positions
+        )
+        physical_idx = int(df_sorted.at[row_index, "index"])
 
     # Coerce type to match column dtype where possible
     target_dtype = df[column].dtype
@@ -134,8 +152,8 @@ def apply_cell_edit(
     except (ValueError, TypeError):
         pass  # keep as string
 
-    old_value = df.at[row_index, column] if old_value is None else old_value
-    df.at[row_index, column] = new_value
+    old_value = df.at[physical_idx, column] if old_value is None else old_value
+    df.at[physical_idx, column] = new_value
 
     # Rebuild DuckDB table from updated DataFrame
     conn.execute(f'DROP TABLE IF EXISTS "{table_name}"')

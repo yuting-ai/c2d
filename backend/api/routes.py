@@ -803,6 +803,8 @@ class CellEditRequest(BaseModel):
     row_index: int
     column: str
     value: Any
+    sort_col: str | None = None   # active sort column in the frontend grid
+    sort_dir: str = "asc"         # "asc" or "desc"
 
 
 @router.patch("/projects/{project_id}/datasets/{dataset_id}/cells")
@@ -823,6 +825,8 @@ async def edit_cell(
             row_index=body.row_index,
             column=body.column,
             new_value=body.value,
+            sort_col=body.sort_col,
+            sort_dir=body.sort_dir,
         )
     except (IndexError, KeyError) as e:
         raise HTTPException(400, detail={
