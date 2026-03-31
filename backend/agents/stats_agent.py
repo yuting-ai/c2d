@@ -11,11 +11,17 @@ from backend.graph.state import AgentState
 
 logger = logging.getLogger(__name__)
 
-# Keywords that trigger auto-Pearson regardless of intent_pattern
+# Keywords that trigger auto-Pearson as a fallback when intent_pattern != "P-G".
+# Keep ONLY unambiguously correlation-specific terms.
+# EXCLUDED intentionally:
+#   "significant" / "significance" / "显著性" → also used in trend/group-comparison queries
+#   "outlier" / "异常值"                       → standalone outlier detection, not correlation
 _PG_CORRELATION_KEYWORDS = {
-    "相关性", "correlation", "p值", "p-value", "p value",
-    "显著性", "significance", "significant", "pearson",
-    "异常值", "outlier", "线性相关", "是否相关", "有无相关",
+    "相关性",
+    "correlation",
+    "pearson",
+    "p值", "p-value", "p value",
+    "线性相关", "是否相关", "有无相关",
 }
 
 
