@@ -33,7 +33,6 @@ frontend/dist/
 .DS_Store
 
 # ── Project docs & internal files (not published) ──
-doc/
 docs/
 eval/
 tests/
