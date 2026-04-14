@@ -2,6 +2,8 @@
 
 A multi-agent AI system for natural language data analysis. Upload a CSV or Excel file, ask questions in plain English (or Chinese), and get SQL queries, interactive charts, statistical tests, and a written report — all generated automatically.
 
+![c2d screenshot](preview/screenshot.png)
+
 ---
 
 ## Features
