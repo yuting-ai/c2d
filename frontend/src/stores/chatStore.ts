@@ -104,6 +104,57 @@ function ensureProject(state: ChatStore, projectId: string): { sessions: ChatSes
   return { sessions, activeSessionId }
 }
 
+/**
+ * Merge an incoming step list into the existing trace.
+ *
+ * Strategy:
+ * - Steps are matched by their label base (the part before " · "), so that
+ *   "querying data · 1 queries" and "querying data · 2 queries" are treated
+ *   as the same logical step.
+ * - Incoming steps are authoritative for any step they mention (status update).
+ * - Existing "done" steps NOT covered by the incoming list are preserved in
+ *   their original position, so completed steps don't disappear when a later
+ *   agent sends a shorter step list.
+ * - Existing non-done (active/waiting) steps NOT in the incoming list are
+ *   dropped — they are stale.
+ */
+function mergeTraceSteps(existing: TraceStep[], incoming: TraceStep[]): TraceStep[] {
+  const getBase = (label: string) => label.split(' · ')[0]
+
+  // Index incoming steps by their label base for O(1) lookup
+  const incomingByBase = new Map<string, TraceStep>()
+  for (const step of incoming) {
+    incomingByBase.set(getBase(step.label), step)
+  }
+
+  // Build result starting from existing, updating or removing each step
+  const result: TraceStep[] = []
+  const handledBases = new Set<string>()
+
+  for (const step of existing) {
+    const base = getBase(step.label)
+    const incomingMatch = incomingByBase.get(base)
+    if (incomingMatch) {
+      result.push(incomingMatch)       // update with latest status / label
+      handledBases.add(base)
+    } else if (step.status === 'done') {
+      result.push(step)                // keep completed steps not in incoming
+    }
+    // active/waiting steps not covered by incoming are stale — drop them
+  }
+
+  // Append any incoming steps that weren't in existing at all
+  for (const step of incoming) {
+    const base = getBase(step.label)
+    if (!handledBases.has(base)) {
+      result.push(step)
+      handledBases.add(base)
+    }
+  }
+
+  return result
+}
+
 export const useChatStore = create<ChatStore>((set, get) => ({
   sessionsByProject: {},
   activeSessionIdByProject: {},
@@ -227,7 +278,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             : {
                 ...sess,
                 exchanges: sess.exchanges.map((e) =>
-                  e.id === id ? { ...e, trace: steps, status: 'streaming' } : e
+                  e.id === id
+                    ? { ...e, trace: mergeTraceSteps(e.trace ?? [], steps), status: 'streaming' }
+                    : e
                 ),
               }
         ),

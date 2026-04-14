@@ -257,6 +257,40 @@ def _build_series_from_rows(
 
     return result
 
+def _should_swap_axes(series: list[dict], chart_type: str) -> bool:
+    """Return True when horizontal layout renders more clearly than vertical.
+
+    Triggers on bar charts when either:
+    - Sparse multi-series: >6 series and each series covers different x values
+      (e.g. per-group top-N where genre only appears on platforms it ranked)
+    - Many categories: >10 unique x values (hard to read on a vertical x-axis)
+    """
+    if chart_type != "bar" or not series:
+        return False
+
+    all_x: set[str] = set()
+    for s in series:
+        all_x.update(str(v) for v in s.get("x", []))
+
+    n_series = len(series)
+    n_x = len(all_x)
+
+    # Sparse multi-series: genres appear on different platform subsets
+    if n_series > 6:
+        is_sparse = any(
+            {str(v) for v in s.get("x", [])} != all_x
+            for s in series
+        )
+        if is_sparse:
+            return True
+
+    # Many x-axis categories → harder to read vertically
+    if n_x > 10:
+        return True
+
+    return False
+
+
 _HISTOGRAM_KEYWORDS = (
     "histogram",
     "distribution",
@@ -264,6 +298,12 @@ _HISTOGRAM_KEYWORDS = (
     "frequency",
     "binning",
     "bins",
+    # Chinese equivalents
+    "分布",
+    "频率",
+    "频次",
+    "频数",
+    "直方图",
 )
 
 
@@ -448,6 +488,7 @@ async def viz_agent(state: AgentState) -> dict:
         "x_label": chart_data.get("x_label", ""),
         "y_label": chart_data.get("y_label", ""),
         "series": series,
+        "swap_axes": _should_swap_axes(series, primary_type),
     }
 
     # Also build table_data for the table view

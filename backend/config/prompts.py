@@ -10,7 +10,7 @@ INTENT PATTERN TAXONOMY:
   P-A  Overall top-N          "top 5 products by sales"
   P-B  Top-N per group        "top 5 categories per period"  (requires window function)
   P-C  Time-series / trend    "monthly revenue since 2020"
-  P-D  Distribution/histogram "distribution of scores"       (requires width_bucket binning)
+  P-D  Distribution/histogram "distribution of scores"       (requires FLOOR-based binning — no width_bucket in DuckDB)
   P-E  Scalar / single value  "total revenue", "max price"
   P-F  Group comparison       "compare A vs B across regions"
   P-G  Correlation / scatter  "relationship between X and Y" (return raw pairs, no aggregation)
@@ -76,54 +76,21 @@ Data quality notes:
 {quality_notes}
 
 ═══════════════════════════════════════════
-SECTION 3 - INTENT CLASSIFICATION
+SECTION 3 - AGENT SELECTION GUIDE
 ═══════════════════════════════════════════
 
-{intent_taxonomy}
+Use this table to decide which agents to include in the plan:
 
-Classify the user's query into one of the patterns above BEFORE writing sql_task.
-The pattern label you choose will be forwarded to the SQL Agent.
+  Correlation / relationship between two variables → sql + stats (+ viz if chart requested)
+  Trend over time / monthly patterns              → sql + viz (+ stats if significance asked)
+  Distribution / histogram / frequency            → sql + viz
+  Top-N ranking / most / least / popular          → sql + viz
+  Group comparison / compare A vs B               → sql + viz (+ stats if significance asked)
+  Single value / count / total / average          → sql
+  Anomaly / outlier detection                     → sql + stats
 
-═══════════════════════════════════════════
-SECTION 4 - sql_task WRITING RULES
-═══════════════════════════════════════════
-
-sql_task must be a precise, machine-actionable specification:
-
-1. State the INTENT PATTERN (e.g. "P-B: top-N per group").
-2. Name the exact OUTPUT COLUMNS expected (name + what it represents).
-3. State filters, grouping keys, sort order, and N explicitly.
-4. Choose the correct TOP-N implementation:
-   - Global TOP-N (single ranking across all rows, e.g. "top 5 genres by total sales"):
-     use GROUP BY + ORDER BY + LIMIT. Do NOT use ROW_NUMBER().
-   - Per-group TOP-N (ranking within each subgroup, e.g. "top 3 games per genre"):
-     use ROW_NUMBER() OVER (PARTITION BY group_col ORDER BY metric DESC).
-     Wrap in a subquery or use QUALIFY rn <= N.
-5. For P-D: say "use width_bucket() to bin [column]; output bin_range and frequency".
-6. For P-G: say "return raw pairs of [col_x, col_y]; no aggregation".
-   CRITICAL FOR P-G: sql_task must ONLY ask for raw column pairs.
-   NEVER ask SQL to compute Pearson r, p-value, t-statistic, CDF(), CORR(),
-   covariance, or any correlation coefficient. Those are computed by stats_agent.
-   Correct sql_task: "P-G: Return raw pairs of critic_score, total_sales where both are not null."
-   Wrong sql_task:   "Compute Pearson corr and p_value. Output columns: pearson_corr, p_value."
-7. Describe WHAT data is needed, not HOW to implement it in SQL syntax.
-   Let the SQL Agent choose the exact syntax — only specify the logical requirement.
-8. Never leave output format ambiguous - the SQL Agent uses this spec directly.
-
-Good example (Global TOP-N):
-  "P-B: Return the top 5 genres by total sales across all records.
-   Output columns: genre (string), total_sales (double).
-   Group by genre, sum total_sales, order by total_sales DESC, limit 5."
-
-Good example (Per-group TOP-N):
-  "P-B: For each calendar year >= 2015, find the top 5 genres by total sales.
-   Output columns: year (integer), genre (string), total_sales (double).
-   Use per-group ranking: ROW_NUMBER() OVER (PARTITION BY year ORDER BY total_sales DESC).
-   Return rows where rank <= 5, ordered by year ASC, total_sales DESC."
-
-Bad example:
-  "After 2015, for each period show top few categories"
-  (no year column, no metric, no distinction between global vs per-group ranking)
+The SQL Agent handles all query classification and SQL implementation details.
+Do NOT attempt to specify SQL syntax, column names, or implementation strategy here.
 
 ═══════════════════════════════════════════
 SECTION 5 - RESPONSE FORMAT
@@ -141,14 +108,11 @@ OPTION 1 (direct answer):
 OPTION 2 (activate agents):
 {{
   "plan": ["sql", "viz"],
-  "intent_pattern": "P-B",
-  "sql_task": "<precise specification following Section 4 rules>",
-  "involved_columns": ["col1", "col2"],
-  "reasoning": "Brief explanation of chosen pattern and agents"
+  "reasoning": "Brief explanation of why these agents are needed"
 }}
 """
 
-PLANNER_SYSTEM = PLANNER_SYSTEM.replace("{intent_taxonomy}", _INTENT_TAXONOMY)
+# Planner no longer uses the intent taxonomy — SQL Agent owns classification.
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -177,9 +141,11 @@ SECTION 1 - INTENT CLASSIFICATION
 
 {intent_taxonomy}
 
-Step 1: Identify the intent pattern from the sql_task you received.
-Step 2: Select the corresponding query pattern in Section 3.
+Step 1: Read the user query and classify it into one of the patterns above.
+Step 2: Select the corresponding canonical query pattern in Section 3.
 Step 3: Write SQL that satisfies the intent contract.
+
+Note: {intent_pattern} is provided as a hint when available; always verify against the actual query.
 
 ═══════════════════════════════════════════
 SECTION 2 - DIALECT RULES (DuckDB only)
@@ -189,14 +155,25 @@ If unsure about any DuckDB function or syntax, consult {duckdb_refs} - do NOT gu
 
 HARD CONSTRAINTS (behavioral rules not covered by the RAG):
 
+0. Write the final answer query DIRECTLY — do NOT run exploratory queries first.
+   The table schema (columns + types) is provided above. Use it.
+   Never run COUNT(*), DISTINCT checks, or schema probes before the main query.
+   Each tool call must be a step toward the final answer, not data exploration.
+
+   Once your SQL executes successfully (no error), STOP immediately.
+   Do NOT make additional tool calls to refine, narrow, or "improve" the result.
+   Do NOT change filters, add WHERE clauses, or adjust scope based on what you see.
+   Whether the result answers the user's question is the Critic's responsibility, not yours.
+
 1. ONLY one root SELECT per attempt.
    - Do NOT concatenate multiple independent SELECT statements.
    - WITH/CTE is allowed and encouraged for multi-step queries (e.g. P-B window ranking).
    - DuckDB QUALIFY clause is a concise alternative to CTE for window-function filtering.
 
 2. NEVER use these functions (common mistakes from other dialects):
-   strftime()   ISNULL()   GETDATE()   IFNULL()   TOP N
+   strftime()   ISNULL()   GETDATE()   IFNULL()   TOP N   width_bucket()
    Look up the DuckDB equivalent in {duckdb_refs}.
+   For histogram binning use the FLOOR-based pattern in Section 3 (P-D) — DuckDB has no width_bucket.
 
 2b. For P-G (correlation/scatter) intent: NEVER compute statistics in SQL.
     Forbidden: CDF()  CORR()  PEARSON()  t-statistic  p-value  covariance
@@ -204,7 +181,11 @@ HARD CONSTRAINTS (behavioral rules not covered by the RAG):
     These ALL cause Binder Errors in DuckDB. stats_agent handles them in Python.
     The ONLY correct P-G SQL is:
       SELECT col_x, col_y FROM tbl
-      WHERE col_x IS NOT NULL AND col_y IS NOT NULL LIMIT 5000;
+      WHERE col_x IS NOT NULL
+        AND col_y IS NOT NULL;
+    DO NOT add LIMIT — stats_agent handles
+    sampling if the dataset is too large.
+    Adding LIMIT silently biases the result.
 
 3. Avoid SELECT *; select only needed columns.
 
@@ -315,6 +296,7 @@ ORDER BY period;
 
 -- P-D: Histogram / binned distribution
 -- Use ONLY when user explicitly asks for distribution or histogram.
+-- [!] DuckDB has NO width_bucket() function — use FLOOR-based arithmetic instead.
 -- Output MUST have: bin_range (VARCHAR label) and frequency (INTEGER count).
 WITH stats AS (
   SELECT MIN(col) AS lo, MAX(col) AS hi, COUNT(*) AS n
@@ -323,13 +305,19 @@ WITH stats AS (
 params AS (
   SELECT lo, hi,
     CASE WHEN hi = lo THEN 1
-         ELSE GREATEST(CAST(CEIL(POWER(n, 1.0/3) * 2) AS INTEGER), 5)
+         -- Cap at 20: prevents hundreds of hair-thin bins on large datasets.
+         -- 20 bins ensure the Critic preview (first 10 rows) covers ≥ half the range.
+         ELSE LEAST(GREATEST(CAST(CEIL(POWER(n, 1.0/3) * 2) AS INTEGER), 5), 20)
     END AS num_bins
   FROM stats
 ),
 bins AS (
   SELECT col,
-    width_bucket(col, lo, hi + 1e-9, num_bins) AS bin_id,
+    -- FLOOR-based binning (DuckDB-compatible, no width_bucket needed)
+    LEAST(
+      CAST(FLOOR((col - lo) / ((hi - lo + 1e-9) / num_bins)) AS INTEGER) + 1,
+      num_bins
+    ) AS bin_id,
     lo, hi, num_bins
   FROM tbl, params WHERE col IS NOT NULL
 )
@@ -346,6 +334,16 @@ ORDER BY bin_id;
 SELECT COUNT(*) AS total_rows, ROUND(AVG(metric_col), 2) AS avg_metric
 FROM tbl;
 
+-- P-H: Anomaly / outlier detection
+-- [!] Do NOT compute Z-scores, standard deviations, or IQR thresholds in SQL.
+--     stats_agent handles all outlier detection (adaptive log+IQR or Z-score).
+-- Return the rows ordered by the anomaly metric — stats_agent identifies the outliers.
+SELECT title, metric_col, other_relevant_cols
+FROM tbl
+WHERE metric_col IS NOT NULL
+ORDER BY metric_col DESC
+LIMIT 100;
+
 -- P-F: Group comparison
 SELECT
   dimension_col,
@@ -359,10 +357,11 @@ ORDER BY avg_metric DESC;
 -- [!] HARD RULE: return ONLY raw column pairs. NEVER compute Pearson r, p-value,
 --     t-statistic, CDF(), CORR(), covariance, or correlation coefficients in SQL.
 --     All statistical computation is handled by stats_agent after SQL returns.
+-- [!] NO LIMIT: stats_agent applies
+-- random sampling if n > MAX_SAMPLE.
 SELECT col_x, col_y
 FROM tbl
-WHERE col_x IS NOT NULL AND col_y IS NOT NULL
-LIMIT 5000;
+WHERE col_x IS NOT NULL AND col_y IS NOT NULL;
 
 ═══════════════════════════════════════════
 SECTION 4 - ERROR RECOVERY
@@ -431,6 +430,9 @@ Important anti-false-positive rules:
 - For simple global TOP-N queries (e.g. "top 5 genres by total sales"), ORDER BY + LIMIT is correct and sufficient. Do NOT flag this as requiring a window function. Window functions (ROW_NUMBER/RANK) are only needed when ranking WITHIN partitions (e.g. top 3 games per genre).
 - If the SQL uses ROW_NUMBER() OVER (PARTITION BY x ORDER BY SUM(y)) inside a GROUP BY query and gets a DuckDB Binder Error, the fix is to remove the window function entirely and use ORDER BY + LIMIT instead — do NOT suggest adding more columns to GROUP BY.
 - Do NOT retry solely because a window function is absent in a TOP-N query — absence of ROW_NUMBER/RANK is correct behavior for global ranking.
+- Per-group top-N row count rule: if SQL uses PARTITION BY with QUALIFY rn <= N (or WHERE rn <= N), the expected result row count is n_groups × N (or fewer if some groups have < N entries). Do NOT retry solely because the row count seems large. Example: 39 platforms × top 3 = up to 117 rows is correct for "top 3 per platform".
+- For anomaly/outlier detection queries (P-H): SQL returning data ordered by the relevant metric is CORRECT. Outlier computation (Z-score, IQR, log+IQR) is stats_agent's responsibility. If stats_agent already returned outlier results (non-empty outliers list), verdict MUST be pass. Do NOT ask SQL to compute Z-scores or standard deviations.
+- For distribution/histogram queries where SQL returns ≥ 5 rows with range labels (e.g. "1.0 - 1.5") and frequency counts: the numeric range in the results reflects ACTUAL data values — do NOT retry because the range "seems too small" or doesn't match your domain expectation (e.g. you expect 0-100 but the data is on a 1-10 scale). The data determines the range. verdict=pass unless the SQL has a clear structural error (wrong column, wrong aggregation).
 - For P-G (scatter/correlation) queries: SQL returning raw {{col_x, col_y}} pairs is CORRECT. Do NOT ask for SQL to compute p-values or Pearson r — that is stats_agent's job. If stats_agent already returned pearson_r/p_value/significant/outlier_count, verdict MUST be pass.
 
 Data sparsity rule (CRITICAL — apply before deciding verdict):

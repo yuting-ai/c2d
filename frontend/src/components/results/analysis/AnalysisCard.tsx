@@ -54,7 +54,7 @@ export default function AnalysisCard({
   const toggleStar = useResultsStore((s) => s.toggleReportStar)
   const chart = rec.chartData
   const [activeType, setActiveType] = useState(chart?.activeType ?? chart?.type ?? 'bar')
-  const [swapAxes, setSwapAxes] = useState(false)
+  const [swapAxes, setSwapAxes] = useState(chart?.swapAxes ?? false)
   const [copied, setCopied] = useState(false)
   const chartRef = useRef<HTMLDivElement>(null)
 
@@ -64,7 +64,7 @@ export default function AnalysisCard({
   }, [rec.id])
 
   useEffect(() => {
-    setSwapAxes(false)
+    setSwapAxes(chart?.swapAxes ?? false)
   }, [rec.id, activeType])
 
   const isRunning = rec.status === 'running'

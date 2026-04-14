@@ -332,7 +332,6 @@ function ThinkingBlock({
   // the blinking dot shows during gaps between agent progress events.
   const hasActive = isWorking && steps.some((s) => s.status === 'active')
   let promotedFirst = false
-  const displaySteps = isWorking ? steps.slice(-3) : steps
 
   return (
     <div
@@ -340,15 +339,18 @@ function ThinkingBlock({
       onClick={shouldCollapse ? () => setUserCollapsed(true) : undefined}
       style={shouldCollapse ? { cursor: 'pointer' } : undefined}
     >
-      {displaySteps.map((s, i) => {
+      {steps.map((s) => {
         let displayStatus = s.status
         if (isWorking && !hasActive && !promotedFirst && s.status === 'waiting') {
           displayStatus = 'active'
           promotedFirst = true
         }
         const label = displayStatus === 'active' ? `running · ${s.label}` : s.label
+        // Use label base as key so React correctly diffs steps by identity,
+        // not position — prevents wrong enter/leave animations when the list changes.
+        const key = s.label.split(' · ')[0]
         return (
-          <div key={i} className={`thinking-step ${displayStatus}`}>
+          <div key={key} className={`thinking-step ${displayStatus}`}>
             <span className={`step-dot ${displayStatus}`} />
             <span className="step-text">{label}</span>
           </div>

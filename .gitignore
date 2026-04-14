@@ -1,7 +1,42 @@
+# ── Data directories ──
 data/uploads/
 data/processed/
 data/exports/
-.env
-frontend/node_modules/
-.vscode/.claude/
 data/preferences/
+data/c2d.sqlite
+
+# ── Secrets ──
+.env
+.env.*
+
+# ── Python cache ──
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ── Virtual environments ──
+.venv/
+venv/
+env/
+
+# ── Frontend build & deps ──
+frontend/node_modules/
+frontend/dist/
+
+# ── IDE / editor ──
+.vscode/
+.claude/
+*.swp
+*.swo
+.DS_Store
+
+# ── Project docs & internal files (not published) ──
+doc/
+docs/
+eval/
+
+# ── Prototype HTML files ──
+analyst-v6.html
+prototype-datagrid.html

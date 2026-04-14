@@ -18,6 +18,7 @@ export interface ChartRecord {
   yLabel: string
   series: ChartSeries[]
   tableData: { headers: string[]; rows: any[][] } | null
+  swapAxes: boolean
   status: 'done' | 'running'
   datasetVersions: Record<string, string>   // datasetId → versionId
 }
@@ -117,6 +118,7 @@ export const useResultsStore = create<ResultsStore>((set) => ({
           yLabel: '',
           series: [],
           tableData: null,
+          swapAxes: false,
           status: 'running',
           datasetVersions: {},
         },

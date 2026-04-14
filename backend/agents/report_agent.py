@@ -19,15 +19,34 @@ def _format_pearson_block(pearson: dict, user_lang: str) -> str:
 
     This is injected *after* the LLM conclusion so the statistical numbers are
     always precise and machine-verified, not paraphrased by the LLM.
+
+    Handles three cases:
+      - error=True  → dataset too large; show error message only
+      - sampled=True → prepend sampling note before conclusion
+      - normal       → full block with total_size / sample_size
     """
+    is_zh = user_lang.startswith("zh")
+
+    # ── Error path: dataset refused ──
+    if pearson.get("error"):
+        msg = pearson.get("message", "Analysis not executed")
+        if is_zh:
+            return f"**分析未执行**：{msg}"
+        else:
+            return f"**Analysis not executed**: {msg}"
+
     r               = pearson.get("pearson_r", "—")
+    # Prefer pre-formatted p_display; fall back to computing it here
     _p_raw          = pearson.get("p_value", None)
-    p_value         = (
+    p_value         = pearson.get("p_display") or (
         "< 0.000001" if isinstance(_p_raw, (int, float)) and _p_raw < 0.000001
         else (f"{_p_raw:.6f}" if isinstance(_p_raw, (int, float)) else "—")
     )
     significant     = pearson.get("significant", False)
+    total_size      = pearson.get("total_size", pearson.get("sample_size", "—"))
     sample_size     = pearson.get("sample_size", "—")
+    sampled         = pearson.get("sampled", False)
+    sample_note     = pearson.get("sample_note")
     outlier_count   = pearson.get("outlier_count", 0)
     outlier_method  = pearson.get("outlier_method", "IQR")
     skewness_x      = pearson.get("skewness_x")
@@ -36,7 +55,14 @@ def _format_pearson_block(pearson: dict, user_lang: str) -> str:
     col_y           = pearson.get("col_y", "y")
 
     abs_r = abs(float(r)) if isinstance(r, (int, float)) else 0.0
-    is_zh = user_lang.startswith("zh")
+
+    # ── Sample size display: "sample / total" when sampled ──
+    if sampled:
+        size_str_zh = f"样本量：{sample_size} / 总数据量：{total_size}"
+        size_str_en = f"Sample size: {sample_size} / Total rows: {total_size}"
+    else:
+        size_str_zh = f"样本量：{sample_size}"
+        size_str_en = f"Sample size: {sample_size}"
 
     # Skewness note for whichever column triggered the adaptive method
     skew_note = ""
@@ -63,14 +89,17 @@ def _format_pearson_block(pearson: dict, user_lang: str) -> str:
             f"- Pearson 相关系数 (r)：**{r}**",
             f"- p 值：**{p_value}**",
             f"- 显著性 (α = 0.05)：**{'显著' if significant else '不显著'}**",
-            f"- 样本量：{sample_size}",
+            f"- {size_str_zh}",
             f"- {col_x} 偏度：{skew_x_str}",
             f"- {col_y} 偏度：{skew_y_str}",
             f"- 异常值检测方法：{outlier_method}",
             f"- 异常值数量：{outlier_count}",
             "",
-            f"**结论**：{sig_text}，{direction}向{strength}（|r| = {abs_r:.4f}）。",
         ]
+        if sampled and sample_note:
+            lines.append(f"*注：{sample_note}*")
+            lines.append("")
+        lines.append(f"**结论**：{sig_text}，{direction}向{strength}（|r| = {abs_r:.4f}）。")
         if skew_note:
             lines.append(f"*{skew_note}*")
     else:
@@ -85,14 +114,17 @@ def _format_pearson_block(pearson: dict, user_lang: str) -> str:
             f"- Pearson r: **{r}**",
             f"- p-value: **{p_value}**",
             f"- Significant (α = 0.05): **{'Yes' if significant else 'No'}**",
-            f"- Sample size: {sample_size}",
+            f"- {size_str_en}",
             f"- {col_x} skewness: {skew_x_str}",
             f"- {col_y} skewness: {skew_y_str}",
             f"- Outlier method: {outlier_method}",
             f"- Outlier count: {outlier_count}",
             "",
-            f"**Conclusion**: {sig_text} — {direction} {strength} correlation (|r| = {abs_r:.4f}).",
         ]
+        if sampled and sample_note:
+            lines.append(f"*Note: {sample_note}*")
+            lines.append("")
+        lines.append(f"**Conclusion**: {sig_text} — {direction} {strength} correlation (|r| = {abs_r:.4f}).")
         if skew_note:
             lines.append(f"*{skew_note}*")
 

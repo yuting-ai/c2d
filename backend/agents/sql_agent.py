@@ -414,6 +414,9 @@ async def _run_with_tools(llm, tools, tool_map, conn, system, state) -> dict | N
     events = []
     last_sql_fp: str | None = None
     original_task = state.get("sql_task") or state.get("user_query", "")
+    # Set when a SQL executes without error — exits the loop immediately.
+    # Semantic validation (does the result answer the question?) is the Critic's job.
+    _sql_succeeded = False
 
     for iteration in range(MAX_ITERATIONS):
         response = await llm_with_tools.ainvoke(messages)
@@ -499,6 +502,17 @@ async def _run_with_tools(llm, tools, tool_map, conn, system, state) -> dict | N
             })
 
             messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"]))
+
+            # ── Stop as soon as SQL executes successfully ──
+            # SQL Agent's job is syntax correctness only.
+            # Whether the result answers the user's question is Critic's responsibility.
+            if executed and not is_error:
+                logger.info("SQL Agent tool-mode: SQL succeeded at iteration %d — stopping loop", iteration + 1)
+                _sql_succeeded = True
+                break  # exit inner for-loop
+
+        if _sql_succeeded:
+            break  # exit outer iteration loop
 
     return _build_result(collected_steps, events, conn, state)
 

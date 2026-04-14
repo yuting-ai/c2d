@@ -78,7 +78,7 @@ async def planner_agent(state: AgentState) -> dict:
         system += (
             "\n\n[!] PREVIOUS PLAN FAILED REVIEW.\n"
             f"Reviewer feedback:\n{critic_feedback}\n"
-            "Revise the plan and SQL task so it addresses the original user intent exactly."
+            "Revise the agent plan so it addresses the original user intent exactly."
         )
         logger.info(f"Planner retry #{retry_count}, critic feedback: {critic_feedback[:200]}")
 
@@ -89,7 +89,7 @@ async def planner_agent(state: AgentState) -> dict:
     ])
 
     text = response.content.strip()
-    logger.info(f"Planner raw output: {text[:300]}")
+    logger.info(f"Planner raw output: {text[:500]}")
 
     # Robust JSON extraction (handles fences, <think> tags, messy output)
     parsed = extract_json(text)
@@ -99,8 +99,6 @@ async def planner_agent(state: AgentState) -> dict:
         fallback_plan = ["sql", "viz"] if _needs_viz(state["user_query"]) else ["sql"]
         parsed = {
             "plan": fallback_plan,
-            "sql_task": state["user_query"],
-            "involved_columns": [],
             "reasoning": "Failed to parse planner output, falling back to SQL",
         }
 
@@ -113,23 +111,20 @@ async def planner_agent(state: AgentState) -> dict:
     if user_needs_data and not plan and direct_answer:
         plan = ["sql", "viz"]
         direct_answer = None
-        parsed["sql_task"] = parsed.get("sql_task") or state["user_query"]
         logger.info("Planner override: query requires data but model gave direct_answer → forcing sql+viz")
 
     # ── Safety net: if user explicitly asks for a chart, ensure "viz" is in plan ──
     user_wants_viz = _needs_viz(state["user_query"])
     if user_wants_viz:
         if not plan:
-            # Model gave direct_answer but user wants a chart — override to agent mode
             plan = ["sql", "viz"]
             direct_answer = None
-            parsed["sql_task"] = parsed.get("sql_task") or state["user_query"]
             logger.info("Planner override: user wants viz but model gave direct answer → forcing sql+viz")
         elif "viz" not in plan:
             plan.append("viz")
             logger.info("Planner override: appended 'viz' to plan because user query implies chart")
 
-    # Also make sure "sql" is always present when plan is non-empty
+    # Always ensure "sql" is present when plan is non-empty
     if plan and "sql" not in plan:
         plan.insert(0, "sql")
 
@@ -145,14 +140,9 @@ async def planner_agent(state: AgentState) -> dict:
                 ]
             }
         }
-
         return {
             "plan": [],
             "sql_task": "",
-            "viz_task": None,
-            "stats_task": None,
-            "involved_columns": parsed.get("involved_columns", []),
-            # Store direct answer in sql_result so SSE can pick it up
             "sql_result": {
                 "steps": [],
                 "final_rows": [],
@@ -163,27 +153,20 @@ async def planner_agent(state: AgentState) -> dict:
             "stream_events": [progress_event],
         }
 
-    # ── Worker activation path ──
-    sql_task = parsed.get("sql_task", state["user_query"])
-    intent_pattern = parsed.get("intent_pattern", "")
-    logger.info(f"Planner intent_pattern: {intent_pattern!r}")
-
+    # ── Worker activation path: pass raw user query to SQL Agent ──
+    user_query = state["user_query"]
     progress_event = {
         "type": "progress",
         "data": {
             "steps": [
                 {"agent": "analyst", "label": "planning analysis", "status": "done"},
-                {"agent": "analyst", "label": sql_task[:60], "status": "waiting"},
+                {"agent": "analyst", "label": user_query[:60], "status": "waiting"},
             ]
         }
     }
 
     return {
         "plan": plan if plan else ["sql"],
-        "intent_pattern": intent_pattern,
-        "sql_task": sql_task,
-        "viz_task": parsed.get("viz_task"),
-        "stats_task": parsed.get("stats_task"),
-        "involved_columns": parsed.get("involved_columns", []),
+        "sql_task": user_query,   # SQL Agent receives the original query directly
         "stream_events": [progress_event],
     }

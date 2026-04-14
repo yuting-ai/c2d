@@ -118,6 +118,7 @@ export function useAnalysisStream() {
             yLabel: viz.y_label || '',
             series: viz.series || [],
             tableData: viz.table_data || null,
+            swapAxes: viz.swap_axes ?? false,
             status: 'done',
             datasetVersions,
           })
@@ -159,6 +160,7 @@ export function useAnalysisStream() {
               yLabel: viz.y_label || '',
               series: viz.series || [],
               tableData: viz.table_data || null,
+              swapAxes: viz.swap_axes ?? false,
               status: 'done' as const,
               datasetVersions,
             }

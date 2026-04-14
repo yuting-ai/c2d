@@ -17,11 +17,10 @@ class AgentState(TypedDict, total=False):
 
     # ── Planner output ──
     plan: list[str]                 # ["sql", "viz", "stats"]
-    intent_pattern: str             # "P-A" … "P-H" — canonical query shape from Planner
-    sql_task: str
-    viz_task: str | None
-    stats_task: str | None
-    involved_columns: list[str]
+    sql_task: str                   # raw user_query forwarded to SQL Agent
+
+    # ── SQL Agent output (classification) ──
+    intent_pattern: str             # "P-A" … "P-H" — set by SQL Agent; used by Stats/Critic
 
     # ── NULL handling ──
     data_quality_warnings: list[dict]   # [{column, table, sparsity_rate, recommended, ...}]

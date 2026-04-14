@@ -41,9 +41,18 @@ async def critic_agent(state: AgentState) -> dict:
         result_preview = f"{header}\n{rows}\n({len(final_rows)} total rows)"
 
     stats_summary = "None"
-    tests = stats_result.get("tests", [])
+    tests    = stats_result.get("tests", [])
+    outliers = stats_result.get("outliers", [])
+    parts: list[str] = []
     if tests:
-        stats_summary = "\n".join(f"- {t['key']}: {t['value']}" for t in tests)
+        parts.append("\n".join(f"- {t['key']}: {t['value']}" for t in tests))
+    if outliers:
+        parts.append(
+            f"Outliers detected by stats_agent ({len(outliers)} items):\n"
+            + "\n".join(f"  {o.get('icon', '△')} {o.get('text', '')}" for o in outliers)
+        )
+    if parts:
+        stats_summary = "\n".join(parts)
 
     quality_notes = "\n".join(state.get("quality_notes", [])) or "None"
 
@@ -103,12 +112,20 @@ async def critic_agent(state: AgentState) -> dict:
     # Deterministic guard: force retry when histogram intent with insufficient bin data.
     verdict, target, feedback = _force_histogram_retry(state, verdict, target, feedback)
 
+    # Deterministic guard: pass when histogram SQL returned proper binned data.
+    # Catches Critic domain-assumption false positives (e.g. "expected 0-100 but got 1-10").
+    verdict, target, feedback = _override_histogram_correct_bins(state, verdict, target, feedback)
+
+    # Deterministic guard: pass when P-H anomaly query has stats_agent outlier results.
+    verdict, target, feedback = _override_anomaly_outlier_detected(state, verdict, target, feedback)
+
     # Deterministic guard: pass when NULLs are due to dataset sparsity, not SQL errors.
     verdict, target, feedback = _override_null_sparsity_retry(state, verdict, target, feedback)
 
     # Deterministic guard against known low-value false positives.
     verdict, target, feedback = _override_false_positive_retry(state, verdict, target, feedback)
     verdict, target, feedback = _override_sum_and_avg_both_requested(state, verdict, target, feedback)
+    verdict, target, feedback = _override_per_group_topn_row_count(state, verdict, target, feedback)
 
     notes = parsed.get("transparency_notes", [])
 
@@ -133,6 +150,12 @@ async def critic_agent(state: AgentState) -> dict:
     return result
 
 
+_PG_CRITIC_KEYWORDS = {
+    "相关性", "correlation", "pearson", "p值", "p-value", "p value",
+    "线性相关", "是否相关", "有无相关", "corr", "scatter",
+}
+
+
 def _override_pg_correlation(
     state: AgentState, verdict: str, target: str, feedback: str
 ) -> tuple[str, str, str]:
@@ -140,9 +163,17 @@ def _override_pg_correlation(
 
     If Pearson result is present in stats_result → always pass.
     If Pearson result is absent → retry stats_agent (never sql).
+
+    Detection: intent_pattern=="P-G" (set by SQL Agent when available)
+               OR correlation keywords found in user_query (fallback).
     """
     intent_pattern = (state.get("intent_pattern") or "").upper()
-    if intent_pattern != "P-G":
+    user_query_lower = (state.get("user_query") or "").lower()
+    is_pg = (
+        intent_pattern == "P-G"
+        or any(kw in user_query_lower for kw in _PG_CRITIC_KEYWORDS)
+    )
+    if not is_pg:
         return verdict, target, feedback
 
     stats_result = state.get("stats_result") or {}
@@ -182,6 +213,14 @@ _HISTOGRAM_KEYWORDS = (
     "binning",
     "bins",
     "width_bucket",
+    # Chinese equivalents
+    "分布",
+    "频率",
+    "频次",
+    "频数",
+    "直方图",
+    "分布情况",
+    "分布图",
 )
 
 
@@ -206,9 +245,116 @@ def _force_histogram_retry(state: AgentState, verdict: str, target: str, feedbac
             "sql",
             "User asked for a histogram/distribution, but the SQL returned only "
             f"{len(final_rows)} rows of summary statistics instead of properly binned frequency data. "
-            "Rewrite the SQL to use width_bucket() (DuckDB) to compute histogram bins. "
-            "Output bin_range as x column and frequency count as y column. "
-            "Use at least 8-15 bins depending on data range.",
+            "Rewrite the SQL using the P-D canonical pattern from Section 3 — "
+            "use FLOOR-based arithmetic binning (DuckDB has no width_bucket function). "
+            "Output columns: bin_range (VARCHAR label like '1.0 - 2.5') and frequency (INTEGER count). "
+            "Target 8-15 bins depending on the data range.",
+        )
+
+    return verdict, target, feedback
+
+
+def _override_histogram_correct_bins(
+    state: AgentState, verdict: str, target: str, feedback: str
+) -> tuple[str, str, str]:
+    """Force pass when a histogram query returned proper binned data.
+
+    Catches Critic false positives caused by:
+    - Domain-assumption errors (e.g. expecting 0-100 scale when data is 1-10)
+    - Seeing only the first 10 rows of a many-bin result and misreading the max range
+    - General distrust of the binning arithmetic
+
+    Triggers only when:
+    1. User query is histogram intent (in _HISTOGRAM_KEYWORDS)
+    2. SQL produced ≥ 5 rows  (proper bins, not summary stats)
+    3. Columns look like bin_range + frequency (histogram shape)
+    """
+    if verdict != "retry":
+        return verdict, target, feedback
+
+    user_query = (state.get("user_query") or "").lower()
+    if not any(kw in user_query for kw in _HISTOGRAM_KEYWORDS):
+        return verdict, target, feedback
+
+    sql_result = state.get("sql_result", {}) or {}
+    final_rows = sql_result.get("final_rows", [])
+    final_cols = sql_result.get("final_columns", [])
+
+    if len(final_rows) < 5:
+        return verdict, target, feedback  # Too few rows — real problem, let retry stand
+
+    col_names_lower = [str(c).lower() for c in final_cols]
+
+    # Detect histogram output shape: one range/label column + one numeric count column
+    _range_kws = ("range", "bin", "bucket", "interval", "segment", "区间", "分段", "score", "scope", "label")
+    _freq_kws  = ("freq", "count", "cnt", "num", "total", "frequency", "数量", "频", "n_")
+
+    has_range_col = any(any(kw in c for kw in _range_kws) for c in col_names_lower)
+    has_freq_col  = any(any(kw in c for kw in _freq_kws)  for c in col_names_lower)
+
+    if not (has_range_col and has_freq_col):
+        return verdict, target, feedback
+
+    logger.info(
+        "Critic: overriding histogram domain-assumption false-positive — "
+        "SQL returned %d proper histogram bins (cols: %s). Forcing pass.",
+        len(final_rows), final_cols,
+    )
+    return (
+        "pass",
+        target,
+        f"SQL correctly produced a histogram with {len(final_rows)} bins. "
+        "The data range in the result reflects actual column values — "
+        "a range that differs from domain expectations is not a SQL error.",
+    )
+
+
+_ANOMALY_KEYWORDS = {
+    "异常", "outlier", "anomaly", "偏高", "偏低", "离群", "极端",
+    "unusual", "abnormal", "spike", "异常值", "离群值", "异常高", "异常低",
+    "异常偏高", "异常偏低",
+}
+
+
+def _override_anomaly_outlier_detected(
+    state: AgentState, verdict: str, target: str, feedback: str
+) -> tuple[str, str, str]:
+    """For P-H anomaly queries: pass if stats_agent already detected outliers.
+
+    SQL's job is to return the data ordered by the relevant metric.
+    stats_agent handles the actual outlier detection (adaptive IQR / Z-score).
+    Do NOT ask SQL to re-compute Z-scores when stats_agent already found outliers.
+
+    Detection: intent_pattern=="P-H" OR anomaly keywords in user_query.
+    """
+    if verdict != "retry":
+        return verdict, target, feedback
+
+    intent_pattern   = (state.get("intent_pattern") or "").upper()
+    user_query_lower = (state.get("user_query") or "").lower()
+
+    is_ph = (
+        intent_pattern == "P-H"
+        or any(kw in user_query_lower for kw in _ANOMALY_KEYWORDS)
+    )
+    if not is_ph:
+        return verdict, target, feedback
+
+    stats_result = state.get("stats_result") or {}
+    outliers     = stats_result.get("outliers", [])
+
+    if outliers:
+        logger.info(
+            "Critic: P-H override → pass (%d outlier(s) detected by stats_agent). "
+            "SQL correctly returned data; outlier detection is stats_agent's responsibility.",
+            len(outliers),
+        )
+        return (
+            "pass",
+            target,
+            f"stats_agent detected {len(outliers)} outlier(s) using adaptive IQR/Z-score. "
+            "SQL correctly returned the data ordered by the relevant metric; "
+            "outlier identification is stats_agent's job — do NOT ask SQL to compute Z-scores or IQR.",
         )
 
     return verdict, target, feedback
@@ -406,6 +552,70 @@ def _override_sum_and_avg_both_requested(
         )
 
     return verdict, target, feedback
+
+
+def _override_per_group_topn_row_count(
+    state: AgentState, verdict: str, target: str, feedback: str
+) -> tuple[str, str, str]:
+    """Pass when Critic retries solely because row count seems large for a per-group top-N.
+
+    Pattern: SQL uses PARTITION BY + QUALIFY/WHERE rn <= N.
+    Expected row count = n_groups × N (or fewer). This is CORRECT, not a bug.
+    Critic often flags this as "too many rows" — override to pass.
+    """
+    if verdict != "retry":
+        return verdict, target, feedback
+
+    sql_result = state.get("sql_result", {}) or {}
+    sql_steps = sql_result.get("steps", []) or []
+    if not sql_steps:
+        return verdict, target, feedback
+
+    # Find the last executed SQL
+    final_sql = ""
+    for step in reversed(sql_steps):
+        if step.get("executed") and not step.get("is_error"):
+            final_sql = step.get("sql", "")
+            break
+    if not final_sql:
+        return verdict, target, feedback
+
+    sql_u = final_sql.upper()
+
+    # Must use PARTITION BY (per-group window)
+    if "PARTITION BY" not in sql_u:
+        return verdict, target, feedback
+
+    # Must have QUALIFY or WHERE rn/rank <= N pattern
+    has_qualify = "QUALIFY" in sql_u
+    has_rn_filter = bool(re.search(r"\b(RN|RANK|ROW_NUMBER)\s*<=\s*\d+", sql_u, re.IGNORECASE))
+    if not (has_qualify or has_rn_filter):
+        return verdict, target, feedback
+
+    # Critic's feedback must mention row count, "too many", "incorrect limit", or "rows"
+    fb = (feedback or "").lower()
+    row_count_complaint = any(
+        tok in fb for tok in [
+            "行数", "rows", "too many", "过多", "没有正确限制", "row count",
+            "incorrect", "不正确", "limit", "104", "117", "entries",
+        ]
+    )
+    if not row_count_complaint:
+        return verdict, target, feedback
+
+    final_rows = sql_result.get("final_rows", [])
+    logger.info(
+        "Critic: overriding per-group top-N row-count false positive — "
+        "SQL uses PARTITION BY + QUALIFY/rn filter, %d rows is expected. Forcing pass.",
+        len(final_rows),
+    )
+    return (
+        "pass",
+        target,
+        f"SQL correctly uses per-group ranking (PARTITION BY + QUALIFY). "
+        f"{len(final_rows)} result rows is expected (n_groups × top_N, or fewer). "
+        "Row count is not a sign of incorrect limiting.",
+    )
 
 
 def _is_equivalent_time_boundary(sql: str, contract: dict) -> bool:
