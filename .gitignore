@@ -36,6 +36,7 @@ frontend/dist/
 doc/
 docs/
 eval/
+tests/
 
 # ── Prototype HTML files ──
 analyst-v6.html
