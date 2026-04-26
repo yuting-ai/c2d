@@ -106,7 +106,7 @@ flowchart TD
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/<your-username>/c2d.git
+git clone https://github.com/yuting-ai/c2d.git
 cd c2d
 ```
 
