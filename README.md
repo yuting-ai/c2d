@@ -279,10 +279,8 @@ All settings can be overridden via `.env`:
 | `ANTHROPIC_API_KEY` | — | Anthropic API key |
 | `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Ollama server URL |
 | `OLLAMA_MODEL` | `qwen2.5-coder:7b` | Ollama model name |
-| `EMBEDDING_PROVIDER` | `local` | Embedding backend (`local`) |
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformer model |
-| `QDRANT_HOST` | `localhost` | Qdrant vector DB host |
-| `QDRANT_PORT` | `6333` | Qdrant vector DB port |
+| `DUCKDB_DOC_DIR` | `./doc/duckdb_official` | Local DuckDB reference docs used for SQL grounding |
+| `SQL_DOC_TOP_K` | `3` | Number of DuckDB reference snippets injected into the SQL Agent prompt |
 | `DUCKDB_DATA_DIR` | `./data/processed` | DuckDB database storage path |
 | `UPLOAD_DIR` | `./data/uploads` | Uploaded file storage path |
 | `HOST` | `0.0.0.0` | Backend server bind address |
@@ -304,12 +302,8 @@ ANTHROPIC_API_KEY=
 OLLAMA_BASE_URL=http://localhost:11434/v1
 OLLAMA_MODEL=qwen2.5-coder:7b
 
-EMBEDDING_PROVIDER=local
-EMBEDDING_MODEL=all-MiniLM-L6-v2
-
-QDRANT_HOST=localhost
-QDRANT_PORT=6333
-QDRANT_COLLECTION=c2d_memory
+DUCKDB_DOC_DIR=./doc/duckdb_official
+SQL_DOC_TOP_K=3
 
 DUCKDB_DATA_DIR=./data/processed
 UPLOAD_DIR=./data/uploads
