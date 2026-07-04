@@ -8,7 +8,7 @@ A multi-agent AI system for natural language data analysis. Upload a CSV or Exce
 
 ## Features
 
-- **Natural language queries** — supports English and Chinese
+- **Natural language queries** — turn questions into SQL automatically
 - **Multi-agent pipeline** — Planner → SQL → Viz → Stats → Critic → Report
 - **Auto chart selection** — picks the right chart type (bar, line, pie, scatter, histogram) from query intent
 - **Statistical analysis** — Pearson correlation, trend significance, outlier detection (Z-score / log+IQR adaptive)
