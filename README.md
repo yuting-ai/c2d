@@ -93,7 +93,7 @@ flowchart TD
 | Data engine | DuckDB + Pandas |
 | Statistics | SciPy + scikit-learn |
 | Charts | Plotly (server) + Recharts (client) |
-| Vector search | Qdrant + sentence-transformers |
+| RAG grounding | Local DuckDB syntax-reference retriever |
 | Frontend | React 19 + TypeScript + Vite |
 | State management | Zustand |
 | Streaming | Server-Sent Events (SSE) |
