@@ -250,8 +250,8 @@ c2d/
 │   ├── config/          # Settings and LLM prompt templates
 │   ├── db/              # DuckDB engine, data loader, sandboxed execution
 │   ├── graph/           # LangGraph pipeline, state, routing
-│   ├── knowledge/       # DuckDB RAG retriever
-│   ├── memory/          # Session memory and user preferences
+│   ├── knowledge/       # Local DuckDB docs retriever for SQL grounding
+│   ├── memory/          # Persistent NULL-handling preferences
 │   └── tools/           # SQL, stats, viz, and data tools
 ├── frontend/
 │   ├── src/
