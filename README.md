@@ -26,41 +26,49 @@ A multi-agent AI system for natural language data analysis. Upload a CSV or Exce
 flowchart TD
     Start([User Query]) --> Planner
 
-    Planner -->|direct answer| End([END])
+    Planner["Planner Agent<br/>decides worker plan"]
+    SQL["SQL Agent<br/>generate and execute SQL"]
+    Viz["Viz Agent<br/>chart shaping"]
+    Stats["Stats Agent<br/>statistical analysis"]
+    Critic["Critic Agent<br/>quality review"]
+    Report["Report Agent<br/>final response"]
+    Retry["Retry / Recovery<br/>Critic can route back to SQL, Planner, Viz, or Stats<br/>Deferred Viz can run after retry passes"]
+    End([END])
+
+    Planner -->|schema-only| End
     Planner -->|needs data| SQL
 
-    SQL["SQL Agent\ngenerate & execute SQL"]
-    SQL -->|error / no rows| Report
-    SQL -->|on retry| Critic
-    SQL -->|viz in plan| Viz
-    SQL -->|stats only| Stats
-    SQL -->|neither| Critic
+    SQL -->|query failed / no rows| Report
+    SQL -->|data result| Decision{Need visualization?}
 
-    Viz["Viz Agent\nchart type + data shaping"]
-    Viz -->|stats in plan| Stats
-    Viz -->|no stats| Critic
-    Viz -->|post-retry| Report
+    Decision -->|yes| Viz
+    Decision -->|no| StatDecision{Need statistics?}
 
-    Stats["Stats Agent\nPearson / trend / outliers"]
+    Viz --> StatDecision
+    StatDecision -->|yes| Stats
+    StatDecision -->|no| Critic
+
     Stats --> Critic
-
-    Critic["Critic Agent\nreview correctness"]
-    Critic -->|retry → SQL| SQL
-    Critic -->|retry → Planner| Planner
-    Critic -->|pass, viz deferred| Viz
     Critic -->|pass| Report
-
-    Report["Report Agent\nnatural language conclusion"]
     Report --> End
 
-    style Planner fill:#4f46e5,color:#fff,stroke:none
-    style SQL fill:#0891b2,color:#fff,stroke:none
-    style Viz fill:#0891b2,color:#fff,stroke:none
-    style Stats fill:#0891b2,color:#fff,stroke:none
-    style Critic fill:#d97706,color:#fff,stroke:none
-    style Report fill:#059669,color:#fff,stroke:none
-    style Start fill:#6b7280,color:#fff,stroke:none
-    style End fill:#6b7280,color:#fff,stroke:none
+    Critic -.-> Retry
+
+    classDef startEnd fill:#6b7280,color:#fff,stroke:none;
+    classDef planner fill:#4f46e5,color:#fff,stroke:none;
+    classDef worker fill:#0891b2,color:#fff,stroke:none;
+    classDef critic fill:#d97706,color:#fff,stroke:none;
+    classDef report fill:#059669,color:#fff,stroke:none;
+    classDef decision fill:#f3f4f6,color:#111827,stroke:#9ca3af;
+    classDef retry fill:#fff7ed,color:#9a3412,stroke:#fdba74,stroke-dasharray: 5 5;
+
+    class Start,End startEnd;
+    class Planner planner;
+    class SQL,Viz,Stats worker;
+    class Critic critic;
+    class Report report;
+    class Decision,StatDecision decision;
+    class Retry retry;
 ```
 
 **Key routing rules:**
